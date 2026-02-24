@@ -1,6 +1,6 @@
 [package]
 name = "molvis"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "CLI web viewer for ORCA .out trajectories with 3Dmol.js rendering"
 license = "MIT"
