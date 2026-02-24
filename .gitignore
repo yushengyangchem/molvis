@@ -1,0 +1,7 @@
+/target
+.direnv
+.pre-commit-config.yaml
+result*
+
+# local ORCA test files
+/data/*.out
