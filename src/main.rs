@@ -117,16 +117,18 @@ fn print_usage_and_exit(code: i32) -> ! {
     eprintln!("molvis - ORCA .out viewer");
     eprintln!();
     eprintln!("Usage:");
-    eprintln!("  cargo run -- [OPTIONS] <path-to-orca-out-file>");
+    eprintln!("  molvis [OPTIONS] <path-to-orca-out-file>");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -H, --host <ip>      Bind host (default: 127.0.0.1)");
     eprintln!("  -p, --port <port>    Bind port (default: 3000)");
+    eprintln!("  -V, --version        Show version");
     eprintln!("  -h, --help           Show this help message");
     eprintln!();
     eprintln!("Examples:");
-    eprintln!("  cargo run -- path/to/file.out");
-    eprintln!("  cargo run -- -H 0.0.0.0 -p 8080 path/to/file.out");
+    eprintln!("  molvis path/to/file.out");
+    eprintln!("  molvis -H 0.0.0.0 -p 8080 path/to/file.out");
+    eprintln!("  molvis --version");
     process::exit(code);
 }
 
@@ -196,6 +198,10 @@ where
         match arg.as_str() {
             "-h" | "--help" => {
                 print_usage_and_exit(0);
+            }
+            "-V" | "--version" => {
+                eprintln!("molvis {}", env!("CARGO_PKG_VERSION"));
+                process::exit(0);
             }
             "-H" | "--host" => {
                 let value = args
