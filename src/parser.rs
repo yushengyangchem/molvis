@@ -2,7 +2,7 @@ use crate::models::{Atom, Frame, ParseResult};
 
 pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
     let mut frames: Vec<Frame> = Vec::new();
-    let mut current_energy: Option<f64> = None;
+    let mut pending_energy: Option<f64> = None;
 
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0usize;
@@ -11,7 +11,14 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
         let line = lines[i].trim();
 
         if let Some(e) = parse_energy_line(line) {
-            current_energy = Some(e);
+            if let Some(last_frame) = frames.last_mut() {
+                // ORCA optimization logs report energies after a geometry block.
+                // Keep updating the latest frame as more precise energies appear.
+                last_frame.energy_hartree = Some(e);
+            } else {
+                // Keep compatibility for outputs that list an energy before coordinates.
+                pending_energy = Some(e);
+            }
         }
 
         if line.contains("CARTESIAN COORDINATES (ANGSTROEM)") {
@@ -45,7 +52,7 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
             if !atoms.is_empty() {
                 frames.push(Frame {
                     step: frames.len(),
-                    energy_hartree: current_energy,
+                    energy_hartree: pending_energy.take(),
                     atoms,
                 });
             }
@@ -61,19 +68,13 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
 }
 
 fn parse_energy_line(line: &str) -> Option<f64> {
-    let markers = [
-        "FINAL SINGLE POINT ENERGY",
-        "Total Energy       :",
-        "The current total energy in Eh",
-    ];
-
-    if !markers.iter().any(|m| line.contains(m)) {
-        return None;
+    if line.contains("FINAL SINGLE POINT ENERGY") {
+        return line
+            .split_whitespace()
+            .rev()
+            .find_map(|tok| tok.parse::<f64>().ok());
     }
-
-    line.split_whitespace()
-        .rev()
-        .find_map(|tok| tok.parse::<f64>().ok())
+    None
 }
 
 #[cfg(test)]
@@ -81,19 +82,20 @@ mod tests {
     use super::parse_orca_out;
 
     #[test]
-    fn parse_basic_energy_and_coordinates() {
+    fn parse_geometry_then_energy_cycles() {
         let content = r#"
-FINAL SINGLE POINT ENERGY     -10.5000
 CARTESIAN COORDINATES (ANGSTROEM)
 ---------------------------------
 C       0.0000      0.0000      0.0000
 H       0.0000      0.0000      1.0800
 
-FINAL SINGLE POINT ENERGY     -10.6000
+FINAL SINGLE POINT ENERGY     -10.5000
 CARTESIAN COORDINATES (ANGSTROEM)
 ---------------------------------
 C       0.0100      0.0000      0.0000
 H       0.0000      0.0100      1.0700
+
+FINAL SINGLE POINT ENERGY     -10.6000
 "#;
         let result = parse_orca_out("test.out", content);
         assert_eq!(result.frames.len(), 2);

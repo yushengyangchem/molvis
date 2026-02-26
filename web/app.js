@@ -12,6 +12,7 @@ const slider = document.getElementById("frameSlider");
 const frameInfo = document.getElementById("frameInfo");
 const energyValue = document.getElementById("energyValue");
 const viewerEl = document.getElementById("viewer");
+const ENERGY_DECIMALS = 12;
 
 bindEvents();
 bootstrap();
@@ -107,7 +108,8 @@ function updateMeta() {
 
   if (total > 0) {
     const energy = state.frames[state.currentIndex].energy_hartree;
-    energyValue.textContent = energy == null ? "N/A" : energy.toFixed(8);
+    energyValue.textContent =
+      energy == null ? "N/A" : energy.toFixed(ENERGY_DECIMALS);
   } else {
     energyValue.textContent = "N/A";
   }
