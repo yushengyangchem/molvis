@@ -40,6 +40,11 @@ h1 {
   margin-bottom: 12px;
 }
 
+#toggleAtomIndexBtn.active {
+  background: #0f8a45;
+  color: #fff;
+}
+
 .controls label,
 .timeline label {
   display: block;
@@ -85,6 +90,19 @@ button:hover {
 
 .timeline input {
   flex: 1;
+}
+
+.timeline .toggle-btn {
+  background: #eef2fb;
+  color: #31415d;
+  border: 1px solid #d4dced;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.timeline .toggle-btn:hover {
+  filter: none;
+  background: #e6ecfa;
 }
 
 .viewer {

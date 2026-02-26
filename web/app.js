@@ -5,6 +5,7 @@ const state = {
   viewer: null,
   currentIndex: 0,
   molLib: null,
+  showAtomIndices: false,
 };
 
 const statusEl = document.getElementById("status");
@@ -12,6 +13,7 @@ const slider = document.getElementById("frameSlider");
 const frameInfo = document.getElementById("frameInfo");
 const energyValue = document.getElementById("energyValue");
 const viewerEl = document.getElementById("viewer");
+const toggleAtomIndexBtn = document.getElementById("toggleAtomIndexBtn");
 const ENERGY_DECIMALS = 12;
 
 bindEvents();
@@ -40,6 +42,13 @@ function bindEvents() {
   slider.addEventListener("input", (e) => {
     const idx = Number(e.target.value);
     renderFrame(idx);
+  });
+  toggleAtomIndexBtn.addEventListener("click", () => {
+    state.showAtomIndices = !state.showAtomIndices;
+    updateAtomIndexToggle();
+    if (state.frames.length > 0) {
+      renderFrame(state.currentIndex);
+    }
   });
 
   window.addEventListener("resize", resizeViewer);
@@ -83,6 +92,9 @@ function renderFrame(index) {
       sphere: { scale: 0.3, colorscheme },
     },
   );
+  if (state.showAtomIndices) {
+    addAtomIndexLabels(frame.atoms);
+  }
   state.viewer.zoomTo();
   state.viewer.render();
 
@@ -115,6 +127,33 @@ function updateMeta() {
   }
 }
 
+function updateAtomIndexToggle() {
+  if (state.showAtomIndices) {
+    toggleAtomIndexBtn.textContent = "Hide Atom Indices";
+    toggleAtomIndexBtn.classList.add("active");
+    toggleAtomIndexBtn.setAttribute("aria-pressed", "true");
+  } else {
+    toggleAtomIndexBtn.textContent = "Show Atom Indices";
+    toggleAtomIndexBtn.classList.remove("active");
+    toggleAtomIndexBtn.setAttribute("aria-pressed", "false");
+  }
+}
+
+function addAtomIndexLabels(atoms) {
+  atoms.forEach((atom, index) => {
+    state.viewer.addLabel(String(index), {
+      position: { x: atom.x, y: atom.y, z: atom.z },
+      fontColor: "#ffffff",
+      backgroundColor: "#111827",
+      backgroundOpacity: 0.55,
+      borderThickness: 0,
+      fontSize: 12,
+      bold: true,
+      inFront: true,
+    });
+  });
+}
+
 function toXYZ(atoms) {
   const lines = [String(atoms.length), "frame"];
   for (const atom of atoms) {
@@ -130,6 +169,7 @@ function setStatus(text) {
 async function loadData() {
   try {
     if (!(await initViewer())) return;
+    updateAtomIndexToggle();
     setStatus("Loading parsed ORCA data...");
     const response = await fetch("/api/data");
     if (!response.ok) {
