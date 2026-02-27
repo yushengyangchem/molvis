@@ -15,9 +15,25 @@
         <label for="frameSlider">Frame</label>
         <input id="frameSlider" type="range" min="0" max="0" value="0" />
         <span id="frameInfo">0 / 0</span>
+        <button id="exportXyzBtn" class="toggle-btn" type="button" disabled>
+          Show XYZ Text
+        </button>
         <button id="toggleAtomIndexBtn" class="toggle-btn" type="button">
           Show Atom Indices
         </button>
+      </section>
+
+      <section id="xyzTextPanel" class="xyz-panel hidden">
+        <div class="xyz-panel-head">
+          <strong>Current Frame XYZ</strong>
+          <button id="copyXyzBtn" class="toggle-btn" type="button">Copy</button>
+        </div>
+        <textarea
+          id="xyzTextOutput"
+          class="xyz-text"
+          readonly
+          spellcheck="false"
+        ></textarea>
       </section>
 
       <section class="energy">
@@ -47,7 +63,6 @@
       </section>
     </main>
 
-    cf
     <script type="module" src="./app.js"></script>
   </body>
 </html>

@@ -8,6 +8,7 @@ import {
 
 const state = {
   frames: [],
+  source: "",
   finalConverged: null,
   viewer: null,
   currentIndex: 0,
@@ -33,6 +34,10 @@ const finalConvergenceBadge = document.getElementById("finalConvergenceBadge");
 const energyTrendChart = document.getElementById("energyTrendChart");
 const viewerEl = document.getElementById("viewer");
 const toggleAtomIndexBtn = document.getElementById("toggleAtomIndexBtn");
+const exportXyzBtn = document.getElementById("exportXyzBtn");
+const xyzTextPanel = document.getElementById("xyzTextPanel");
+const xyzTextOutput = document.getElementById("xyzTextOutput");
+const copyXyzBtn = document.getElementById("copyXyzBtn");
 const clearMeasureBtn = document.getElementById("clearMeasureBtn");
 const ENERGY_DECIMALS = 12;
 
@@ -71,6 +76,12 @@ function bindEvents() {
       renderFrame(state.currentIndex);
     }
   });
+  exportXyzBtn?.addEventListener("click", () => {
+    toggleCurrentFrameXyzText();
+  });
+  copyXyzBtn?.addEventListener("click", async () => {
+    await copyXyzText();
+  });
 
   clearMeasureBtn?.addEventListener("click", () => {
     clearSelectionAndRefresh("Measurement selection cleared.");
@@ -101,6 +112,7 @@ function bindEvents() {
 
 function loadFrames(frames, source, finalConverged = null) {
   state.frames = frames || [];
+  state.source = source || "orca";
   state.finalConverged = finalConverged;
   state.currentIndex = 0;
   state.hasAutoZoomed = false;
@@ -172,6 +184,7 @@ function renderFrame(index, { showLabels = state.showAtomIndices } = {}) {
 
   state.viewer.render();
   updateMeta();
+  syncVisibleXyzText();
 }
 
 function scheduleRenderFrame(index) {
@@ -266,6 +279,10 @@ function updateMeta() {
   const total = state.frames.length;
   const current = total > 0 ? state.currentIndex + 1 : 0;
   frameInfo.textContent = `${current} / ${total}`;
+  if (exportXyzBtn) {
+    exportXyzBtn.disabled = total === 0;
+  }
+  updateXyzPanelToggleLabel();
 
   if (total > 0) {
     const energy = state.frames[state.currentIndex].energy_hartree;
@@ -308,6 +325,90 @@ function addAtomIndexLabels(atoms) {
 
 function setStatus(text) {
   statusEl.textContent = text;
+}
+
+function toggleCurrentFrameXyzText() {
+  if (!xyzTextPanel || !xyzTextOutput) return;
+  if (!xyzTextPanel.classList.contains("hidden")) {
+    xyzTextPanel.classList.add("hidden");
+    updateXyzPanelToggleLabel();
+    setStatus("XYZ text panel hidden.");
+    return;
+  }
+  showCurrentFrameXyzText();
+}
+
+function showCurrentFrameXyzText() {
+  if (!state.frames.length) {
+    setStatus("No frame available to export.");
+    return;
+  }
+  const frame = state.frames[state.currentIndex];
+  const xyzText = formatFrameAsXyz(
+    frame,
+    state.currentIndex,
+    state.frames.length,
+  );
+  xyzTextOutput.value = xyzText;
+  xyzTextPanel.classList.remove("hidden");
+  updateXyzPanelToggleLabel();
+  xyzTextOutput.focus();
+  xyzTextOutput.select();
+  setStatus(`XYZ text ready for frame ${state.currentIndex + 1}.`);
+}
+
+function updateXyzPanelToggleLabel() {
+  if (!exportXyzBtn || !xyzTextPanel) return;
+  const shown = !xyzTextPanel.classList.contains("hidden");
+  exportXyzBtn.textContent = shown ? "Hide XYZ Text" : "Show XYZ Text";
+}
+
+function syncVisibleXyzText() {
+  if (!xyzTextPanel || !xyzTextOutput) return;
+  if (xyzTextPanel.classList.contains("hidden")) return;
+  if (!state.frames.length) {
+    xyzTextOutput.value = "";
+    return;
+  }
+  const frame = state.frames[state.currentIndex];
+  xyzTextOutput.value = formatFrameAsXyz(
+    frame,
+    state.currentIndex,
+    state.frames.length,
+  );
+}
+
+function formatFrameAsXyz(frame, frameIndex, totalFrames) {
+  const atomCount = frame?.atoms?.length ?? 0;
+  const energy =
+    frame?.energy_hartree == null
+      ? "N/A"
+      : frame.energy_hartree.toFixed(ENERGY_DECIMALS);
+  const header = `${atomCount}\nFrame ${frameIndex + 1}/${totalFrames}; Energy(Hartree)=${energy}\n`;
+  const atomLines = (frame?.atoms || [])
+    .map(
+      (atom) =>
+        `${atom.element} ${atom.x.toFixed(10)} ${atom.y.toFixed(10)} ${atom.z.toFixed(10)}`,
+    )
+    .join("\n");
+  return atomLines ? `${header}${atomLines}\n` : header;
+}
+
+async function copyXyzText() {
+  if (!xyzTextOutput) return;
+  const text = xyzTextOutput.value;
+  if (!text) {
+    setStatus("No XYZ text to copy.");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("XYZ text copied to clipboard.");
+  } catch {
+    xyzTextOutput.focus();
+    xyzTextOutput.select();
+    setStatus("Auto-copy blocked; text selected, press Ctrl+C.");
+  }
 }
 
 async function drawEnergyTrend() {

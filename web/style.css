@@ -33,7 +33,8 @@ h1 {
 .status,
 .timeline,
 .energy,
-.energy-chart {
+.energy-chart,
+.xyz-panel {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -105,6 +106,38 @@ button:hover {
 .timeline .toggle-btn:hover {
   filter: none;
   background: #e6ecfa;
+}
+
+.timeline .toggle-btn:disabled {
+  cursor: not-allowed;
+  color: #98a2b3;
+  border-color: #e4e7ec;
+  background: #f6f7f9;
+}
+
+.xyz-panel.hidden {
+  display: none;
+}
+
+.xyz-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.xyz-text {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid #d4dced;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #1f2937;
+  background: #f8fafc;
+  resize: vertical;
 }
 
 .energy {
