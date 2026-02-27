@@ -32,7 +32,8 @@ h1 {
 .controls,
 .status,
 .timeline,
-.energy {
+.energy,
+.energy-chart {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -103,6 +104,26 @@ button:hover {
 .timeline .toggle-btn:hover {
   filter: none;
   background: #e6ecfa;
+}
+
+.energy-chart-header {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+#energyTrendChart {
+  width: 100%;
+  height: 250px;
+  display: block;
+  border: 1px solid #e2e8f5;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fcfdff, #f4f7fe);
+}
+
+.energy-chart-hint {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .viewer {

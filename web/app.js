@@ -5,6 +5,9 @@ const state = {
   viewer: null,
   currentIndex: 0,
   molLib: null,
+  plotLib: null,
+  trendEventsBound: false,
+  trendRenderToken: 0,
   showAtomIndices: false,
 };
 
@@ -12,6 +15,7 @@ const statusEl = document.getElementById("status");
 const slider = document.getElementById("frameSlider");
 const frameInfo = document.getElementById("frameInfo");
 const energyValue = document.getElementById("energyValue");
+const energyTrendChart = document.getElementById("energyTrendChart");
 const viewerEl = document.getElementById("viewer");
 const toggleAtomIndexBtn = document.getElementById("toggleAtomIndexBtn");
 const ENERGY_DECIMALS = 12;
@@ -51,10 +55,19 @@ function bindEvents() {
     }
   });
 
-  window.addEventListener("resize", resizeViewer);
+  window.addEventListener("resize", () => {
+    resizeViewer();
+    resizeEnergyTrend();
+  });
   if (window.ResizeObserver) {
-    const observer = new ResizeObserver(() => resizeViewer());
+    const observer = new ResizeObserver(() => {
+      resizeViewer();
+      resizeEnergyTrend();
+    });
     observer.observe(viewerEl);
+    if (energyTrendChart) {
+      observer.observe(energyTrendChart);
+    }
   }
 }
 
@@ -113,6 +126,11 @@ function resizeViewer() {
   state.viewer.render();
 }
 
+function resizeEnergyTrend() {
+  if (!state.plotLib || !energyTrendChart) return;
+  state.plotLib.Plots.resize(energyTrendChart);
+}
+
 function updateMeta() {
   const total = state.frames.length;
   const current = total > 0 ? state.currentIndex + 1 : 0;
@@ -125,6 +143,7 @@ function updateMeta() {
   } else {
     energyValue.textContent = "N/A";
   }
+  drawEnergyTrend();
 }
 
 function updateAtomIndexToggle() {
@@ -166,6 +185,98 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
+async function drawEnergyTrend() {
+  if (!energyTrendChart) return;
+  const token = ++state.trendRenderToken;
+  const plotLib = await loadPlotly();
+  if (!plotLib) {
+    renderTrendFallback("Failed to load chart library");
+    return;
+  }
+  if (token !== state.trendRenderToken) return;
+
+  const points = state.frames
+    .map((frame, idx) => ({ index: idx, energy: frame.energy_hartree }))
+    .filter((point) => Number.isFinite(point.energy));
+
+  if (points.length < 2) {
+    renderTrendFallback("Not enough energy points to draw trend");
+    return;
+  }
+
+  const x = points.map((point) => point.index);
+  const y = points.map((point) => point.energy);
+  const markerColor = points.map((point) =>
+    point.index === state.currentIndex ? "#0f8a45" : "#1e63d7",
+  );
+  const markerSize = points.map((point) =>
+    point.index === state.currentIndex ? 11 : 7,
+  );
+
+  const data = [
+    {
+      type: "scatter",
+      mode: "lines+markers",
+      x,
+      y,
+      line: { color: "#1e63d7", width: 2.4, shape: "spline", smoothing: 0.45 },
+      marker: { color: markerColor, size: markerSize },
+      hovertemplate: "Frame %{x}<br>Energy %{y:.12f}<extra></extra>",
+    },
+  ];
+
+  const layout = {
+    margin: { l: 68, r: 16, t: 12, b: 48 },
+    showlegend: false,
+    paper_bgcolor: "rgba(0, 0, 0, 0)",
+    plot_bgcolor: "rgba(255, 255, 255, 0.55)",
+    dragmode: "zoom",
+    xaxis: {
+      title: "Frame Index",
+      showgrid: true,
+      gridcolor: "#e8eefb",
+      zeroline: false,
+      tickmode: "auto",
+    },
+    yaxis: {
+      title: "Energy (Hartree)",
+      showgrid: true,
+      gridcolor: "#e8eefb",
+      zeroline: false,
+    },
+  };
+
+  const config = {
+    responsive: true,
+    scrollZoom: true,
+    displaylogo: false,
+    doubleClick: "reset+autosize",
+    modeBarButtonsToRemove: ["select2d", "lasso2d"],
+  };
+
+  await plotLib.react(energyTrendChart, data, layout, config);
+  if (token !== state.trendRenderToken) return;
+
+  if (!state.trendEventsBound) {
+    energyTrendChart.on("plotly_click", (event) => {
+      const frameIndex = Number(event?.points?.[0]?.x);
+      if (!Number.isInteger(frameIndex)) return;
+      if (frameIndex < 0 || frameIndex >= state.frames.length) return;
+      slider.value = String(frameIndex);
+      renderFrame(frameIndex);
+    });
+    state.trendEventsBound = true;
+  }
+}
+
+function renderTrendFallback(message) {
+  if (!energyTrendChart) return;
+  if (state.plotLib) {
+    state.plotLib.purge(energyTrendChart);
+  }
+  energyTrendChart.innerHTML = `<div class="energy-chart-hint">${message}</div>`;
+}
+
 async function loadData() {
   try {
     if (!(await initViewer())) return;
@@ -192,6 +303,7 @@ async function load3DMol() {
   }
 
   const candidates = [
+    "/3Dmol-min.js",
     "https://3dmol.org/build/3Dmol-min.js",
     "https://cdn.jsdelivr.net/npm/3dmol/build/3Dmol-min.js",
     "https://unpkg.com/3dmol/build/3Dmol-min.js",
@@ -212,6 +324,37 @@ async function load3DMol() {
   setStatus(
     "Failed to load 3Dmol.js. Check your network, or vendor 3Dmol-min.js locally under /web.",
   );
+  return null;
+}
+
+async function loadPlotly() {
+  if (state.plotLib) {
+    return state.plotLib;
+  }
+  if (window.Plotly) {
+    state.plotLib = window.Plotly;
+    return state.plotLib;
+  }
+
+  const candidates = [
+    "/plotly.min.js",
+    "https://cdn.plot.ly/plotly-2.35.2.min.js",
+    "https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js",
+    "https://unpkg.com/plotly.js-dist-min@2.35.2/plotly.min.js",
+  ];
+
+  for (const src of candidates) {
+    try {
+      await appendScript(src);
+      if (window.Plotly) {
+        state.plotLib = window.Plotly;
+        return state.plotLib;
+      }
+    } catch {
+      // Try next source.
+    }
+  }
+
   return null;
 }
 

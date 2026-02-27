@@ -52,6 +52,7 @@
             check.enable = true;
             settings.hooks = {
               nixfmt.enable = true;
+              shfmt.enable = true;
               taplo = {
                 enable = true;
                 excludes = [ "Cargo.lock" ];

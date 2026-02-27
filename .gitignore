@@ -5,3 +5,7 @@ result*
 
 # local ORCA test files
 /data/*.out
+
+# local frontend libs for offline fallback
+/web/3Dmol-min.js
+/web/plotly.min.js

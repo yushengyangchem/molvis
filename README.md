@@ -37,3 +37,38 @@ Open `http://127.0.0.1:3000`
 ```bash
 cargo run -- -H 0.0.0.0 -p 8080 /path/to/your.out
 ```
+
+## Frontend JS loading
+
+The frontend loads two browser libraries:
+
+- `3Dmol-min.js` for 3D molecular rendering
+- `plotly.min.js` for interactive energy trend chart
+
+Default behavior: `local first, CDN fallback`.
+
+- If `web/3Dmol-min.js` / `web/plotly.min.js` exist, local files are used.
+- If local files are absent, it automatically falls back to CDN.
+
+Optional offline mode: place these files under `web/` and they will be used first:
+
+- `web/3Dmol-min.js`
+- `web/plotly.min.js`
+
+You can fetch them with:
+
+```bash
+scripts/fetch-web-libs.sh
+```
+
+Use `--force` to re-download:
+
+```bash
+scripts/fetch-web-libs.sh --force
+```
+
+### Note for intranet / no-internet environments
+
+- If external CDN access is blocked, 3D viewer or trend chart may fail to load.
+- In that case, provide local files under `web/` (recommended), or allowlist the CDN domains in your network policy.
+- If only one library fails to load, the other feature can still work (for example, 3D works but chart fails, or vice versa).

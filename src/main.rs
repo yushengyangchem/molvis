@@ -4,6 +4,7 @@ mod parser;
 use axum::{
     extract::State,
     http::header,
+    http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -115,6 +116,8 @@ async fn main() {
         .route("/app.js", get(app_js))
         .route("/style.css", get(style_css))
         .route("/cpkColors.js", get(cpk_colors_js))
+        .route("/3Dmol-min.js", get(local_3dmol_js))
+        .route("/plotly.min.js", get(local_plotly_js))
         .route("/api/data", get(get_parsed_data))
         .with_state(app_state);
 
@@ -159,8 +162,28 @@ async fn cpk_colors_js() -> Response {
     static_response("text/javascript; charset=utf-8", CPK_COLORS_JS)
 }
 
+async fn local_3dmol_js() -> Response {
+    local_file_response("web/3Dmol-min.js", "text/javascript; charset=utf-8").await
+}
+
+async fn local_plotly_js() -> Response {
+    local_file_response("web/plotly.min.js", "text/javascript; charset=utf-8").await
+}
+
 fn static_response(content_type: &'static str, body: &'static str) -> Response {
     ([(header::CONTENT_TYPE, content_type)], body).into_response()
+}
+
+async fn local_file_response(path: &str, content_type: &'static str) -> Response {
+    match fs::read(path).await {
+        Ok(body) => ([(header::CONTENT_TYPE, content_type)], body).into_response(),
+        Err(_) => (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            format!("Not found: {path}"),
+        )
+            .into_response(),
+    }
 }
 
 #[cfg(test)]
