@@ -1,10 +1,32 @@
 import { cpkColors } from "./cpkColors.js";
 import { toMolWithInferredBondOrders } from "./modules/molBuilder.js";
 import {
+  copyCurrentText,
+  syncVisibleText,
+  toggleCurrentFrameText,
+  updateTextPanelToggleLabel,
+} from "./modules/exportPanel.js";
+import { renderFrequencyPanel as renderFrequencyPanelView } from "./modules/frequencyPanel.js";
+import {
   addSelectionOverlay,
   buildMeasurementStatus,
   getPickedAtomIndex,
 } from "./modules/measurement.js";
+import { renderThermochemistryPanel as renderThermochemistryPanelView } from "./modules/thermochemistry.js";
+import {
+  renderFrame as renderFrameView,
+  clearViewer as clearViewerView,
+  resizeViewer as resizeViewerView,
+  scheduleLabelRender as scheduleLabelRenderView,
+  updateAtomIndexToggle as updateAtomIndexToggleView,
+} from "./modules/viewerFrame.js";
+import {
+  renderVibrationFrame as renderVibrationFrameView,
+  sanitizeFrameCount,
+  startVibrationPlayback as startVibrationPlaybackView,
+  stopVibrationPlayback as stopVibrationPlaybackView,
+} from "./modules/vibration.js";
+import { drawEnergyTrendChart } from "./modules/trendChart.js";
 
 const state = {
   frames: [],
@@ -209,52 +231,21 @@ function loadFrames(
 }
 
 function renderFrame(index, { showLabels = state.showAtomIndices } = {}) {
-  if (!state.frames.length) return;
-  if (!state.viewer) return;
-
-  const frameChanged = state.currentIndex !== index;
-  state.currentIndex = index;
-  if (frameChanged) {
-    clearAtomSelection();
-  }
-
-  const frame = state.frames[index];
-  let mol = state.inferredMolCache.get(index);
-  if (!mol) {
-    mol = toMolWithInferredBondOrders(frame.atoms);
-    state.inferredMolCache.set(index, mol);
-  }
-
-  state.viewer.clear();
-  state.viewer.addModel(mol, "mol");
-  const colorscheme = { prop: "elem", map: cpkColors };
-  state.viewer.setStyle(
-    {},
+  renderFrameView(
+    state,
+    index,
     {
-      stick: { radius: 0.15, colorscheme },
-      sphere: { scale: 0.3, colorscheme },
+      toMolWithInferredBondOrders,
+      cpkColors,
+      onAtomPicked,
+      addSelectionOverlay,
+      updateMeta,
+      syncVisibleText: () =>
+        syncVisibleText(state, getExportElements(), ENERGY_DECIMALS),
+      clearAtomSelection,
     },
+    { showLabels },
   );
-  state.viewer.setClickable({}, true, (atom) => {
-    onAtomPicked(atom);
-  });
-
-  if (showLabels) {
-    addAtomIndexLabels(frame.atoms);
-  }
-
-  if (state.selectedAtomFrame === state.currentIndex) {
-    addSelectionOverlay(state.viewer, frame, state.selectedAtomIndices);
-  }
-
-  if (!state.hasAutoZoomed) {
-    state.viewer.zoomTo();
-    state.hasAutoZoomed = true;
-  }
-
-  state.viewer.render();
-  updateMeta();
-  syncVisibleXyzText();
 }
 
 function scheduleRenderFrame(index) {
@@ -275,16 +266,7 @@ function scheduleRenderFrame(index) {
 }
 
 function scheduleLabelRender(index) {
-  if (!state.showAtomIndices) return;
-  if (state.labelRenderTimer) {
-    clearTimeout(state.labelRenderTimer);
-  }
-  state.labelRenderTimer = setTimeout(() => {
-    state.labelRenderTimer = null;
-    if (state.currentIndex !== index) return;
-    if (!state.showAtomIndices) return;
-    renderFrame(index, { showLabels: true });
-  }, 120);
+  scheduleLabelRenderView(state, index, renderFrame);
 }
 
 function onAtomPicked(atom) {
@@ -332,15 +314,11 @@ function clearSelectionAndRefresh(statusText) {
 }
 
 function clearViewer() {
-  if (!state.viewer) return;
-  state.viewer.clear();
-  state.viewer.render();
+  clearViewerView(state.viewer);
 }
 
 function resizeViewer() {
-  if (!state.viewer) return;
-  state.viewer.resize();
-  state.viewer.render();
+  resizeViewerView(state.viewer);
 }
 
 function resizeEnergyTrend() {
@@ -377,532 +355,125 @@ function renderFrequencyPanel() {
   if (freqStatus) {
     freqStatus.textContent = report.status || "No frequency calculation";
   }
-  if (!imagModeList) return;
-
-  imagModeList.innerHTML = "";
-  const modes = Array.isArray(report.imaginary_modes)
-    ? report.imaginary_modes
-    : [];
-  if (!report.has_frequency) {
-    return;
-  }
-  if (!modes.length) {
-    const text = document.createElement("span");
-    text.className = "imag-mode-meta";
-    text.textContent = "No imaginary frequencies";
-    imagModeList.appendChild(text);
-    return;
-  }
-
-  for (const mode of modes) {
-    const card = document.createElement("div");
-    card.className = "imag-mode-card";
-
-    const meta = document.createElement("span");
-    meta.className = "imag-mode-meta";
-    meta.textContent = `${Number(mode.frequency_cm1).toFixed(2)} cm^-1`;
-    card.appendChild(meta);
-
-    const playBtn = document.createElement("button");
-    playBtn.type = "button";
-    playBtn.className = "toggle-btn";
-    const active = isSameMode(state.vibration.activeMode, mode);
-    playBtn.textContent = active ? "Stop" : "Animate";
-    playBtn.addEventListener("click", () => {
-      if (isSameMode(state.vibration.activeMode, mode)) {
-        stopVibrationPlayback();
-      } else {
-        startVibrationPlayback(mode);
-      }
-    });
-    card.appendChild(playBtn);
-
-    imagModeList.appendChild(card);
-  }
-}
-
-function isSameMode(a, b) {
-  if (!a || !b) return false;
-  return (
-    a.mode_index === b.mode_index &&
-    Number(a.frequency_cm1).toFixed(6) === Number(b.frequency_cm1).toFixed(6)
-  );
-}
-
-function renderThermochemistryPanel() {
-  const report = state.frequency || {};
-  if (!thermoPanel) return;
-
-  if (!report.has_frequency) {
-    thermoPanel.classList.add("hidden");
-    return;
-  }
-
-  const thermo = report.thermochemistry || {};
-  const hasThermoValue =
-    Number.isFinite(thermo.electronic_energy_hartree) ||
-    Number.isFinite(thermo.sum_electronic_and_thermal_free_energies_hartree) ||
-    Number.isFinite(thermo.thermal_correction_to_gibbs_free_energy_hartree);
-  if (!hasThermoValue) {
-    thermoPanel.classList.add("hidden");
-    return;
-  }
-
-  if (thermoElectronicEnergy) {
-    thermoElectronicEnergy.textContent = formatHartree(
-      thermo.electronic_energy_hartree,
-    );
-  }
-  if (thermoGibbsFreeEnergy) {
-    thermoGibbsFreeEnergy.textContent = formatHartree(
-      thermo.sum_electronic_and_thermal_free_energies_hartree,
-    );
-  }
-  if (thermoGibbsCorrection) {
-    thermoGibbsCorrection.textContent = formatHartree(
-      thermo.thermal_correction_to_gibbs_free_energy_hartree,
-    );
-  }
-  thermoPanel.classList.remove("hidden");
-}
-
-function formatHartree(value) {
-  if (!Number.isFinite(value)) return "N/A";
-  const trimmed = Number(value)
-    .toFixed(THERMO_DECIMALS)
-    .replace(/\.?0+$/, "");
-  return `${trimmed} Eh`;
-}
-
-function updateAtomIndexToggle() {
-  if (state.showAtomIndices) {
-    toggleAtomIndexBtn.textContent = "Hide Atom Indices";
-    toggleAtomIndexBtn.classList.add("active");
-    toggleAtomIndexBtn.setAttribute("aria-pressed", "true");
-  } else {
-    toggleAtomIndexBtn.textContent = "Show Atom Indices";
-    toggleAtomIndexBtn.classList.remove("active");
-    toggleAtomIndexBtn.setAttribute("aria-pressed", "false");
-  }
-}
-
-function addAtomIndexLabels(atoms) {
-  atoms.forEach((atom, index) => {
-    state.viewer.addLabel(String(index), {
-      position: { x: atom.x, y: atom.y, z: atom.z },
-      fontColor: "#ffffff",
-      backgroundColor: "#111827",
-      backgroundOpacity: 0.55,
-      borderThickness: 0,
-      fontSize: 12,
-      bold: true,
-      inFront: true,
-    });
+  renderFrequencyPanelView(report, state.vibration.activeMode, imagModeList, {
+    start: (mode) => startVibrationPlayback(mode),
+    stop: () => stopVibrationPlayback(),
   });
 }
 
+function renderThermochemistryPanel() {
+  renderThermochemistryPanelView(
+    state.frequency || {},
+    getThermoElements(),
+    THERMO_DECIMALS,
+  );
+}
+
+function updateAtomIndexToggle() {
+  updateAtomIndexToggleView(toggleAtomIndexBtn, state.showAtomIndices);
+}
+
 function setStatus(text) {
+  // Keep the status area stable: only show load/result level messages.
+  const allowed =
+    text.startsWith("Loaded ") ||
+    text.startsWith("No frames were parsed") ||
+    text.startsWith("Failed to load data");
+  if (!allowed) return;
   statusEl.textContent = text;
 }
 
+function getExportElements() {
+  return {
+    exportXyzBtn,
+    exportGjfBtn,
+    xyzTextPanel,
+    xyzTextOutput,
+    textPanelTitle,
+  };
+}
+
+function getThermoElements() {
+  return {
+    thermoPanel,
+    thermoElectronicEnergy,
+    thermoGibbsFreeEnergy,
+    thermoGibbsCorrection,
+  };
+}
+
+function getVibrationDeps() {
+  return {
+    vibrationPanel,
+    vibrationTitle,
+    vibrationSlider,
+    vibrationFrameInfo,
+    vibrationFrameCountInput,
+    clearMeasureBtn,
+    toMolWithInferredBondOrders,
+    cpkColors,
+    clearAtomSelection,
+    renderFrame,
+    renderFrequencyPanel,
+    setStatus,
+  };
+}
+
 function toggleCurrentFrameXyzText() {
-  toggleCurrentFrameText("xyz");
+  toggleCurrentFrameText(
+    "xyz",
+    state,
+    getExportElements(),
+    setStatus,
+    ENERGY_DECIMALS,
+  );
 }
 
 function toggleCurrentFrameGjfText() {
-  toggleCurrentFrameText("gjf");
-}
-
-function toggleCurrentFrameText(mode) {
-  if (!xyzTextPanel || !xyzTextOutput) return;
-  const shown = !xyzTextPanel.classList.contains("hidden");
-  if (shown && state.textExportMode === mode) {
-    xyzTextPanel.classList.add("hidden");
-    updateXyzPanelToggleLabel();
-    setStatus("Text panel hidden.");
-    return;
-  }
-  state.textExportMode = mode;
-  showCurrentFrameText();
-}
-
-function showCurrentFrameText() {
-  if (!state.frames.length) {
-    setStatus("No frame available to export.");
-    return;
-  }
-  const frame = state.frames[state.currentIndex];
-  xyzTextOutput.value =
-    state.textExportMode === "gjf"
-      ? formatFrameAsGjf(
-          frame,
-          state.currentIndex,
-          state.frames.length,
-          state.charge,
-          state.multiplicity,
-        )
-      : formatFrameAsXyz(frame, state.currentIndex, state.frames.length);
-  xyzTextPanel.classList.remove("hidden");
-  updateXyzPanelToggleLabel();
-  xyzTextOutput.focus();
-  xyzTextOutput.select();
-  const kind = state.textExportMode === "gjf" ? "GJF" : "XYZ";
-  setStatus(`${kind} text ready for frame ${state.currentIndex + 1}.`);
+  toggleCurrentFrameText(
+    "gjf",
+    state,
+    getExportElements(),
+    setStatus,
+    ENERGY_DECIMALS,
+  );
 }
 
 function updateXyzPanelToggleLabel() {
-  if (!exportXyzBtn || !exportGjfBtn || !xyzTextPanel) return;
-  const shown = !xyzTextPanel.classList.contains("hidden");
-  const xyzActive = shown && state.textExportMode === "xyz";
-  const gjfActive = shown && state.textExportMode === "gjf";
-  exportXyzBtn.textContent = xyzActive ? "Hide XYZ Text" : "Show XYZ Text";
-  exportGjfBtn.textContent = gjfActive ? "Hide GJF Text" : "Show GJF Text";
-  if (textPanelTitle) {
-    textPanelTitle.textContent =
-      state.textExportMode === "gjf"
-        ? "Current Frame GJF"
-        : "Current Frame XYZ";
-  }
+  updateTextPanelToggleLabel(state, getExportElements());
 }
 
 function syncVisibleXyzText() {
-  if (!xyzTextPanel || !xyzTextOutput) return;
-  if (xyzTextPanel.classList.contains("hidden")) return;
-  if (!state.frames.length) {
-    xyzTextOutput.value = "";
-    return;
-  }
-  const frame = state.frames[state.currentIndex];
-  xyzTextOutput.value =
-    state.textExportMode === "gjf"
-      ? formatFrameAsGjf(
-          frame,
-          state.currentIndex,
-          state.frames.length,
-          state.charge,
-          state.multiplicity,
-        )
-      : formatFrameAsXyz(frame, state.currentIndex, state.frames.length);
-}
-
-function formatFrameAsXyz(frame, frameIndex, totalFrames) {
-  const atomCount = frame?.atoms?.length ?? 0;
-  const energy =
-    frame?.energy_hartree == null
-      ? "N/A"
-      : frame.energy_hartree.toFixed(ENERGY_DECIMALS);
-  const header = `${atomCount}\nFrame ${frameIndex + 1}/${totalFrames}; Energy(Hartree)=${energy}\n`;
-  const atomLines = (frame?.atoms || [])
-    .map(
-      (atom) =>
-        `${atom.element} ${atom.x.toFixed(10)} ${atom.y.toFixed(10)} ${atom.z.toFixed(10)}`,
-    )
-    .join("\n");
-  return atomLines ? `${header}${atomLines}\n` : header;
-}
-
-function formatFrameAsGjf(
-  frame,
-  frameIndex,
-  totalFrames,
-  charge,
-  multiplicity,
-) {
-  const ch = Number.isInteger(charge) ? charge : 0;
-  const mult = Number.isInteger(multiplicity) ? multiplicity : 1;
-  const title = `Generated from frame ${frameIndex + 1}/${totalFrames}`;
-  const route = "#P Generated by molvis";
-  const atomLines = (frame?.atoms || [])
-    .map(
-      (atom) =>
-        `${atom.element} ${atom.x.toFixed(10)} ${atom.y.toFixed(10)} ${atom.z.toFixed(10)}`,
-    )
-    .join("\n");
-  return `${route}\n\n${title}\n\n${ch} ${mult}\n${atomLines}\n`;
+  syncVisibleText(state, getExportElements(), ENERGY_DECIMALS);
 }
 
 async function copyXyzText() {
-  if (!xyzTextOutput) return;
-  const text = xyzTextOutput.value;
-  if (!text) {
-    const kind = state.textExportMode === "gjf" ? "GJF" : "XYZ";
-    setStatus(`No ${kind} text to copy.`);
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(text);
-    const kind = state.textExportMode === "gjf" ? "GJF" : "XYZ";
-    setStatus(`${kind} text copied to clipboard.`);
-  } catch {
-    xyzTextOutput.focus();
-    xyzTextOutput.select();
-    setStatus("Auto-copy blocked; text selected, press Ctrl+C.");
-  }
-}
-
-function parseXyzTrajectory(text) {
-  if (!text || typeof text !== "string") return [];
-  const lines = text.split(/\r?\n/);
-  const frames = [];
-  let i = 0;
-  while (i < lines.length) {
-    const count = Number(lines[i]?.trim());
-    if (!Number.isInteger(count) || count <= 0) {
-      i += 1;
-      continue;
-    }
-    if (i + 1 + count >= lines.length) break;
-    const atoms = [];
-    for (let j = 0; j < count; j += 1) {
-      const row = lines[i + 2 + j]?.trim();
-      if (!row) continue;
-      const cols = row.split(/\s+/);
-      if (cols.length < 4) continue;
-      const x = Number(cols[1]);
-      const y = Number(cols[2]);
-      const z = Number(cols[3]);
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-        continue;
-      }
-      atoms.push({ element: cols[0], x, y, z });
-    }
-    if (atoms.length === count) {
-      frames.push({ atoms });
-    }
-    i += count + 2;
-  }
-  return frames;
-}
-
-function sanitizeFrameCount(raw) {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return 21;
-  const rounded = Math.max(5, Math.min(401, Math.round(n)));
-  return rounded % 2 === 0 ? rounded + 1 : rounded;
-}
-
-function resampleTrajectory(frames, targetCount) {
-  if (!Array.isArray(frames) || frames.length === 0) return [];
-  if (!Number.isInteger(targetCount) || targetCount <= 1) return frames;
-  if (frames.length === targetCount) return frames;
-
-  const sourceCount = frames.length;
-  const maxT = sourceCount - 1;
-  const out = [];
-
-  for (let i = 0; i < targetCount; i += 1) {
-    const t = (i * maxT) / (targetCount - 1);
-    const left = Math.floor(t);
-    const right = Math.min(sourceCount - 1, left + 1);
-    const alpha = t - left;
-    const a = frames[left].atoms;
-    const b = frames[right].atoms;
-    if (!a || !b || a.length !== b.length) continue;
-    const atoms = a.map((atom, idx) => ({
-      element: atom.element,
-      x: atom.x + (b[idx].x - atom.x) * alpha,
-      y: atom.y + (b[idx].y - atom.y) * alpha,
-      z: atom.z + (b[idx].z - atom.z) * alpha,
-    }));
-    out.push({ atoms });
-  }
-
-  return out.length ? out : frames;
+  await copyCurrentText(state, getExportElements(), setStatus);
 }
 
 function startVibrationPlayback(mode) {
-  if (!state.viewer) return;
-  const parsed = parseXyzTrajectory(mode?.xyz_trajectory || "");
-  if (!parsed.length) {
-    setStatus(
-      `Imaginary mode ${mode?.mode_index ?? "?"} has no valid XYZ frames.`,
-    );
-    return;
-  }
-  const targetCount = sanitizeFrameCount(
-    vibrationFrameCountInput?.value ?? state.vibration.frameCount,
-  );
-  state.vibration.frameCount = targetCount;
-  if (vibrationFrameCountInput) {
-    vibrationFrameCountInput.value = String(targetCount);
-  }
-  const frames = resampleTrajectory(parsed, targetCount);
-
-  stopVibrationPlayback({ silent: true });
-  clearAtomSelection();
-  state.vibration.activeMode = mode;
-  state.vibration.parsedFrames = frames;
-  state.vibration.currentFrame = 0;
-  if (clearMeasureBtn) {
-    clearMeasureBtn.classList.add("hidden");
-  }
-
-  if (vibrationPanel) vibrationPanel.classList.remove("hidden");
-  if (vibrationTitle) {
-    vibrationTitle.textContent = `Imaginary Frequency (${Number(mode.frequency_cm1).toFixed(2)} cm^-1)`;
-  }
-  if (vibrationSlider) {
-    vibrationSlider.max = String(Math.max(0, frames.length - 1));
-    vibrationSlider.value = "0";
-  }
-  renderVibrationFrame(0);
-
-  state.vibration.timer = window.setInterval(() => {
-    if (!state.vibration.activeMode) return;
-    const next =
-      (state.vibration.currentFrame + 1) % state.vibration.parsedFrames.length;
-    renderVibrationFrame(next);
-    if (vibrationSlider) {
-      vibrationSlider.value = String(next);
-    }
-  }, state.vibration.intervalMs);
-  renderFrequencyPanel();
+  startVibrationPlaybackView(state, mode, getVibrationDeps());
 }
 
 function renderVibrationFrame(index) {
-  if (!state.viewer) return;
-  if (!state.vibration.activeMode) return;
-  const frames = state.vibration.parsedFrames;
-  if (!frames.length) return;
-  if (index < 0 || index >= frames.length) return;
-  state.vibration.currentFrame = index;
-  const frame = frames[index];
-  const mol = toMolWithInferredBondOrders(frame.atoms);
-
-  state.viewer.clear();
-  state.viewer.addModel(mol, "mol");
-  const colorscheme = { prop: "elem", map: cpkColors };
-  state.viewer.setStyle(
-    {},
-    {
-      stick: { radius: 0.15, colorscheme },
-      sphere: { scale: 0.3, colorscheme },
-    },
-  );
-  state.viewer.render();
-  if (vibrationFrameInfo) {
-    vibrationFrameInfo.textContent = `${index + 1} / ${frames.length}`;
-  }
+  renderVibrationFrameView(state, index, getVibrationDeps());
 }
 
 function stopVibrationPlayback({ silent = false } = {}) {
-  if (state.vibration.timer) {
-    window.clearInterval(state.vibration.timer);
-    state.vibration.timer = null;
-  }
-  const hadActive = Boolean(state.vibration.activeMode);
-  state.vibration.activeMode = null;
-  state.vibration.parsedFrames = [];
-  state.vibration.currentFrame = 0;
-  if (vibrationPanel) vibrationPanel.classList.add("hidden");
-  if (vibrationSlider) {
-    vibrationSlider.value = "0";
-    vibrationSlider.max = "0";
-  }
-  if (vibrationFrameInfo) {
-    vibrationFrameInfo.textContent = "0 / 0";
-  }
-  if (hadActive && state.frames.length > 0) {
-    renderFrame(state.currentIndex);
-  }
-  if (clearMeasureBtn) {
-    clearMeasureBtn.classList.remove("hidden");
-  }
-  if (hadActive) {
-    renderFrequencyPanel();
-  }
+  stopVibrationPlaybackView(state, getVibrationDeps(), { silent });
 }
 
 async function drawEnergyTrend() {
-  if (!energyTrendChart) return;
-  const token = ++state.trendRenderToken;
-  const plotLib = await loadPlotly();
-  if (!plotLib) {
-    renderTrendFallback("Failed to load chart library");
-    return;
-  }
-  if (token !== state.trendRenderToken) return;
-
-  const points = state.frames
-    .map((frame, idx) => ({ index: idx, energy: frame.energy_hartree }))
-    .filter((point) => Number.isFinite(point.energy));
-
-  if (points.length < 2) {
-    renderTrendFallback("Not enough energy points to draw trend");
-    return;
-  }
-
-  const x = points.map((point) => point.index);
-  const y = points.map((point) => point.energy);
-  const markerColor = points.map((point) =>
-    point.index === state.currentIndex ? "#0f8a45" : "#1e63d7",
-  );
-  const markerSize = points.map((point) =>
-    point.index === state.currentIndex ? 11 : 7,
-  );
-
-  const data = [
-    {
-      type: "scatter",
-      mode: "lines+markers",
-      x,
-      y,
-      line: { color: "#1e63d7", width: 2.4, shape: "spline", smoothing: 0.45 },
-      marker: { color: markerColor, size: markerSize },
-      hovertemplate: "Frame %{x}<br>Energy %{y:.12f}<extra></extra>",
-    },
-  ];
-
-  const layout = {
-    margin: { l: 68, r: 16, t: 12, b: 48 },
-    showlegend: false,
-    paper_bgcolor: "rgba(0, 0, 0, 0)",
-    plot_bgcolor: "rgba(255, 255, 255, 0.55)",
-    dragmode: "zoom",
-    xaxis: {
-      title: "Frame Index",
-      showgrid: true,
-      gridcolor: "#e8eefb",
-      zeroline: false,
-      tickmode: "auto",
-    },
-    yaxis: {
-      title: "Energy (Hartree)",
-      showgrid: true,
-      gridcolor: "#e8eefb",
-      zeroline: false,
-    },
-  };
-
-  const config = {
-    responsive: true,
-    scrollZoom: true,
-    displaylogo: false,
-    doubleClick: "reset+autosize",
-    modeBarButtonsToRemove: ["select2d", "lasso2d"],
-  };
-
-  await plotLib.react(energyTrendChart, data, layout, config);
-  if (token !== state.trendRenderToken) return;
-
-  if (!state.trendEventsBound) {
-    energyTrendChart.on("plotly_click", (event) => {
-      const frameIndex = Number(event?.points?.[0]?.x);
-      if (!Number.isInteger(frameIndex)) return;
+  await drawEnergyTrendChart(
+    state,
+    energyTrendChart,
+    loadPlotly,
+    (frameIndex) => {
       if (frameIndex < 0 || frameIndex >= state.frames.length) return;
       slider.value = String(frameIndex);
       renderFrame(frameIndex);
-    });
-    state.trendEventsBound = true;
-  }
-}
-
-function renderTrendFallback(message) {
-  if (!energyTrendChart) return;
-  if (state.plotLib) {
-    state.plotLib.purge(energyTrendChart);
-  }
-  energyTrendChart.innerHTML = `<div class="energy-chart-hint">${message}</div>`;
+    },
+  );
 }
 
 async function loadData() {

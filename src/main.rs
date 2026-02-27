@@ -26,6 +26,12 @@ const CPK_COLORS_JS: &str = include_str!("../web/cpkColors.js");
 const GEOMETRY_JS: &str = include_str!("../web/modules/geometry.js");
 const MEASUREMENT_JS: &str = include_str!("../web/modules/measurement.js");
 const MOL_BUILDER_JS: &str = include_str!("../web/modules/molBuilder.js");
+const EXPORT_PANEL_JS: &str = include_str!("../web/modules/exportPanel.js");
+const FREQUENCY_PANEL_JS: &str = include_str!("../web/modules/frequencyPanel.js");
+const THERMOCHEMISTRY_JS: &str = include_str!("../web/modules/thermochemistry.js");
+const TREND_CHART_JS: &str = include_str!("../web/modules/trendChart.js");
+const VIBRATION_JS: &str = include_str!("../web/modules/vibration.js");
+const VIEWER_FRAME_JS: &str = include_str!("../web/modules/viewerFrame.js");
 
 #[derive(Clone)]
 struct AppState {
@@ -122,6 +128,12 @@ async fn main() {
         .route("/modules/geometry.js", get(geometry_js))
         .route("/modules/measurement.js", get(measurement_js))
         .route("/modules/molBuilder.js", get(mol_builder_js))
+        .route("/modules/exportPanel.js", get(export_panel_js))
+        .route("/modules/frequencyPanel.js", get(frequency_panel_js))
+        .route("/modules/thermochemistry.js", get(thermochemistry_js))
+        .route("/modules/trendChart.js", get(trend_chart_js))
+        .route("/modules/vibration.js", get(vibration_js))
+        .route("/modules/viewerFrame.js", get(viewer_frame_js))
         .route("/3Dmol-min.js", get(local_3dmol_js))
         .route("/plotly.min.js", get(local_plotly_js))
         .route("/api/data", get(get_parsed_data))
@@ -178,6 +190,30 @@ async fn measurement_js() -> Response {
 
 async fn mol_builder_js() -> Response {
     static_response("text/javascript; charset=utf-8", MOL_BUILDER_JS)
+}
+
+async fn export_panel_js() -> Response {
+    static_response("text/javascript; charset=utf-8", EXPORT_PANEL_JS)
+}
+
+async fn frequency_panel_js() -> Response {
+    static_response("text/javascript; charset=utf-8", FREQUENCY_PANEL_JS)
+}
+
+async fn thermochemistry_js() -> Response {
+    static_response("text/javascript; charset=utf-8", THERMOCHEMISTRY_JS)
+}
+
+async fn trend_chart_js() -> Response {
+    static_response("text/javascript; charset=utf-8", TREND_CHART_JS)
+}
+
+async fn vibration_js() -> Response {
+    static_response("text/javascript; charset=utf-8", VIBRATION_JS)
+}
+
+async fn viewer_frame_js() -> Response {
+    static_response("text/javascript; charset=utf-8", VIEWER_FRAME_JS)
 }
 
 async fn local_3dmol_js() -> Response {
