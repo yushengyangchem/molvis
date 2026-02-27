@@ -10,6 +10,7 @@ const state = {
   frames: [],
   source: "",
   finalConverged: null,
+  frequency: null,
   viewer: null,
   currentIndex: 0,
   hasAutoZoomed: false,
@@ -24,6 +25,18 @@ const state = {
   trendEventsBound: false,
   trendRenderToken: 0,
   showAtomIndices: false,
+  charge: null,
+  multiplicity: null,
+  textExportMode: "xyz",
+  vibration: {
+    modes: [],
+    activeMode: null,
+    parsedFrames: [],
+    currentFrame: 0,
+    timer: null,
+    intervalMs: 120,
+    frameCount: 21,
+  },
 };
 
 const statusEl = document.getElementById("status");
@@ -35,11 +48,27 @@ const energyTrendChart = document.getElementById("energyTrendChart");
 const viewerEl = document.getElementById("viewer");
 const toggleAtomIndexBtn = document.getElementById("toggleAtomIndexBtn");
 const exportXyzBtn = document.getElementById("exportXyzBtn");
+const exportGjfBtn = document.getElementById("exportGjfBtn");
 const xyzTextPanel = document.getElementById("xyzTextPanel");
 const xyzTextOutput = document.getElementById("xyzTextOutput");
+const textPanelTitle = document.getElementById("textPanelTitle");
 const copyXyzBtn = document.getElementById("copyXyzBtn");
 const clearMeasureBtn = document.getElementById("clearMeasureBtn");
+const freqStatus = document.getElementById("freqStatus");
+const imagModeList = document.getElementById("imagModeList");
+const vibrationPanel = document.getElementById("vibrationPanel");
+const vibrationTitle = document.getElementById("vibrationTitle");
+const vibrationSlider = document.getElementById("vibrationSlider");
+const vibrationFrameInfo = document.getElementById("vibrationFrameInfo");
+const vibrationFrameCountInput = document.getElementById("vibrationFrameCount");
+const thermoPanel = document.getElementById("thermoPanel");
+const thermoElectronicEnergy = document.getElementById(
+  "thermoElectronicEnergy",
+);
+const thermoGibbsFreeEnergy = document.getElementById("thermoGibbsFreeEnergy");
+const thermoGibbsCorrection = document.getElementById("thermoGibbsCorrection");
 const ENERGY_DECIMALS = 12;
+const THERMO_DECIMALS = 11;
 
 bindEvents();
 bootstrap();
@@ -79,12 +108,30 @@ function bindEvents() {
   exportXyzBtn?.addEventListener("click", () => {
     toggleCurrentFrameXyzText();
   });
+  exportGjfBtn?.addEventListener("click", () => {
+    toggleCurrentFrameGjfText();
+  });
   copyXyzBtn?.addEventListener("click", async () => {
     await copyXyzText();
   });
 
   clearMeasureBtn?.addEventListener("click", () => {
     clearSelectionAndRefresh("Measurement selection cleared.");
+  });
+
+  vibrationSlider?.addEventListener("input", (e) => {
+    const idx = Number(e.target.value);
+    if (!Number.isInteger(idx)) return;
+    renderVibrationFrame(idx);
+  });
+
+  vibrationFrameCountInput?.addEventListener("input", () => {
+    const next = sanitizeFrameCount(vibrationFrameCountInput.value);
+    state.vibration.frameCount = next;
+    vibrationFrameCountInput.value = String(next);
+    if (state.vibration.activeMode) {
+      startVibrationPlayback(state.vibration.activeMode);
+    }
   });
 
   window.addEventListener("resize", () => {
@@ -110,10 +157,26 @@ function bindEvents() {
   });
 }
 
-function loadFrames(frames, source, finalConverged = null) {
+function loadFrames(
+  frames,
+  source,
+  finalConverged = null,
+  charge = null,
+  multiplicity = null,
+  frequency = {
+    has_frequency: false,
+    status: "No frequency calculation",
+    imaginary_modes: [],
+    thermochemistry: null,
+  },
+) {
   state.frames = frames || [];
   state.source = source || "orca";
   state.finalConverged = finalConverged;
+  state.charge = charge;
+  state.multiplicity = multiplicity;
+  state.frequency = frequency;
+  state.textExportMode = "xyz";
   state.currentIndex = 0;
   state.hasAutoZoomed = false;
   state.pendingFrameIndex = null;
@@ -123,19 +186,26 @@ function loadFrames(frames, source, finalConverged = null) {
     state.labelRenderTimer = null;
   }
   clearAtomSelection();
+  stopVibrationPlayback({ silent: true });
+  state.vibration.modes = state.frequency?.imaginary_modes || [];
   state.inferredMolCache.clear();
   slider.max = Math.max(0, state.frames.length - 1);
-  slider.value = 0;
+  const initialIndex = Math.max(0, state.frames.length - 1);
+  slider.value = initialIndex;
 
   if (state.frames.length === 0) {
     setStatus(`No frames were parsed from ${source}.`);
     clearViewer();
     updateMeta();
+    renderFrequencyPanel();
+    renderThermochemistryPanel();
     return;
   }
 
   setStatus(`Loaded ${state.frames.length} frame(s) from ${source}.`);
-  scheduleRenderFrame(0);
+  renderFrequencyPanel();
+  renderThermochemistryPanel();
+  scheduleRenderFrame(initialIndex);
 }
 
 function renderFrame(index, { showLabels = state.showAtomIndices } = {}) {
@@ -188,6 +258,9 @@ function renderFrame(index, { showLabels = state.showAtomIndices } = {}) {
 }
 
 function scheduleRenderFrame(index) {
+  if (state.vibration.activeMode) {
+    stopVibrationPlayback({ silent: true });
+  }
   state.pendingFrameIndex = index;
   if (state.scheduledFrameRender) return;
   state.scheduledFrameRender = true;
@@ -282,6 +355,9 @@ function updateMeta() {
   if (exportXyzBtn) {
     exportXyzBtn.disabled = total === 0;
   }
+  if (exportGjfBtn) {
+    exportGjfBtn.disabled = total === 0;
+  }
   updateXyzPanelToggleLabel();
 
   if (total > 0) {
@@ -294,6 +370,99 @@ function updateMeta() {
   updateFinalConvergenceBadge();
 
   drawEnergyTrend();
+}
+
+function renderFrequencyPanel() {
+  const report = state.frequency || {};
+  if (freqStatus) {
+    freqStatus.textContent = report.status || "No frequency calculation";
+  }
+  if (!imagModeList) return;
+
+  imagModeList.innerHTML = "";
+  const modes = Array.isArray(report.imaginary_modes)
+    ? report.imaginary_modes
+    : [];
+  if (!report.has_frequency) {
+    return;
+  }
+  if (!modes.length) {
+    const text = document.createElement("span");
+    text.className = "imag-mode-meta";
+    text.textContent = "No imaginary frequencies";
+    imagModeList.appendChild(text);
+    return;
+  }
+
+  for (const mode of modes) {
+    const card = document.createElement("div");
+    card.className = "imag-mode-card";
+
+    const meta = document.createElement("span");
+    meta.className = "imag-mode-meta";
+    meta.textContent = `${Number(mode.frequency_cm1).toFixed(2)} cm^-1`;
+    card.appendChild(meta);
+
+    const playBtn = document.createElement("button");
+    playBtn.type = "button";
+    playBtn.className = "toggle-btn";
+    const active = isSameMode(state.vibration.activeMode, mode);
+    playBtn.textContent = active ? "Stop" : "Animate";
+    playBtn.addEventListener("click", () => {
+      if (isSameMode(state.vibration.activeMode, mode)) {
+        stopVibrationPlayback();
+      } else {
+        startVibrationPlayback(mode);
+      }
+    });
+    card.appendChild(playBtn);
+
+    imagModeList.appendChild(card);
+  }
+}
+
+function isSameMode(a, b) {
+  if (!a || !b) return false;
+  return (
+    a.mode_index === b.mode_index &&
+    Number(a.frequency_cm1).toFixed(6) === Number(b.frequency_cm1).toFixed(6)
+  );
+}
+
+function renderThermochemistryPanel() {
+  const report = state.frequency || {};
+  if (!thermoPanel) return;
+
+  if (!report.has_frequency) {
+    thermoPanel.classList.add("hidden");
+    return;
+  }
+
+  const thermo = report.thermochemistry || {};
+  if (thermoElectronicEnergy) {
+    thermoElectronicEnergy.textContent = formatHartree(
+      thermo.electronic_energy_hartree,
+    );
+  }
+  if (thermoGibbsFreeEnergy) {
+    thermoGibbsFreeEnergy.textContent = formatHartree(
+      thermo.sum_electronic_and_thermal_free_energies_hartree,
+    );
+  }
+  if (thermoGibbsCorrection) {
+    thermoGibbsCorrection.textContent = formatHartree(
+      thermo.thermal_correction_to_gibbs_free_energy_hartree,
+    );
+  }
+  thermoPanel.classList.remove("hidden");
+}
+
+function formatHartree(value) {
+  if (!Number.isFinite(value)) return "N/A";
+  const trimmed = Number(value)
+    .toFixed(THERMO_DECIMALS)
+    .replace(/\.?0+$/, "");
+  return `${trimmed} Eh`;
 }
 
 function updateAtomIndexToggle() {
@@ -328,39 +497,63 @@ function setStatus(text) {
 }
 
 function toggleCurrentFrameXyzText() {
-  if (!xyzTextPanel || !xyzTextOutput) return;
-  if (!xyzTextPanel.classList.contains("hidden")) {
-    xyzTextPanel.classList.add("hidden");
-    updateXyzPanelToggleLabel();
-    setStatus("XYZ text panel hidden.");
-    return;
-  }
-  showCurrentFrameXyzText();
+  toggleCurrentFrameText("xyz");
 }
 
-function showCurrentFrameXyzText() {
+function toggleCurrentFrameGjfText() {
+  toggleCurrentFrameText("gjf");
+}
+
+function toggleCurrentFrameText(mode) {
+  if (!xyzTextPanel || !xyzTextOutput) return;
+  const shown = !xyzTextPanel.classList.contains("hidden");
+  if (shown && state.textExportMode === mode) {
+    xyzTextPanel.classList.add("hidden");
+    updateXyzPanelToggleLabel();
+    setStatus("Text panel hidden.");
+    return;
+  }
+  state.textExportMode = mode;
+  showCurrentFrameText();
+}
+
+function showCurrentFrameText() {
   if (!state.frames.length) {
     setStatus("No frame available to export.");
     return;
   }
   const frame = state.frames[state.currentIndex];
-  const xyzText = formatFrameAsXyz(
-    frame,
-    state.currentIndex,
-    state.frames.length,
-  );
-  xyzTextOutput.value = xyzText;
+  xyzTextOutput.value =
+    state.textExportMode === "gjf"
+      ? formatFrameAsGjf(
+          frame,
+          state.currentIndex,
+          state.frames.length,
+          state.charge,
+          state.multiplicity,
+        )
+      : formatFrameAsXyz(frame, state.currentIndex, state.frames.length);
   xyzTextPanel.classList.remove("hidden");
   updateXyzPanelToggleLabel();
   xyzTextOutput.focus();
   xyzTextOutput.select();
-  setStatus(`XYZ text ready for frame ${state.currentIndex + 1}.`);
+  const kind = state.textExportMode === "gjf" ? "GJF" : "XYZ";
+  setStatus(`${kind} text ready for frame ${state.currentIndex + 1}.`);
 }
 
 function updateXyzPanelToggleLabel() {
-  if (!exportXyzBtn || !xyzTextPanel) return;
+  if (!exportXyzBtn || !exportGjfBtn || !xyzTextPanel) return;
   const shown = !xyzTextPanel.classList.contains("hidden");
-  exportXyzBtn.textContent = shown ? "Hide XYZ Text" : "Show XYZ Text";
+  const xyzActive = shown && state.textExportMode === "xyz";
+  const gjfActive = shown && state.textExportMode === "gjf";
+  exportXyzBtn.textContent = xyzActive ? "Hide XYZ Text" : "Show XYZ Text";
+  exportGjfBtn.textContent = gjfActive ? "Hide GJF Text" : "Show GJF Text";
+  if (textPanelTitle) {
+    textPanelTitle.textContent =
+      state.textExportMode === "gjf"
+        ? "Current Frame GJF"
+        : "Current Frame XYZ";
+  }
 }
 
 function syncVisibleXyzText() {
@@ -371,11 +564,16 @@ function syncVisibleXyzText() {
     return;
   }
   const frame = state.frames[state.currentIndex];
-  xyzTextOutput.value = formatFrameAsXyz(
-    frame,
-    state.currentIndex,
-    state.frames.length,
-  );
+  xyzTextOutput.value =
+    state.textExportMode === "gjf"
+      ? formatFrameAsGjf(
+          frame,
+          state.currentIndex,
+          state.frames.length,
+          state.charge,
+          state.multiplicity,
+        )
+      : formatFrameAsXyz(frame, state.currentIndex, state.frames.length);
 }
 
 function formatFrameAsXyz(frame, frameIndex, totalFrames) {
@@ -394,6 +592,26 @@ function formatFrameAsXyz(frame, frameIndex, totalFrames) {
   return atomLines ? `${header}${atomLines}\n` : header;
 }
 
+function formatFrameAsGjf(
+  frame,
+  frameIndex,
+  totalFrames,
+  charge,
+  multiplicity,
+) {
+  const ch = Number.isInteger(charge) ? charge : 0;
+  const mult = Number.isInteger(multiplicity) ? multiplicity : 1;
+  const title = `Generated from frame ${frameIndex + 1}/${totalFrames}`;
+  const route = "#P Generated by molvis";
+  const atomLines = (frame?.atoms || [])
+    .map(
+      (atom) =>
+        `${atom.element} ${atom.x.toFixed(10)} ${atom.y.toFixed(10)} ${atom.z.toFixed(10)}`,
+    )
+    .join("\n");
+  return `${route}\n\n${title}\n\n${ch} ${mult}\n${atomLines}\n`;
+}
+
 async function copyXyzText() {
   if (!xyzTextOutput) return;
   const text = xyzTextOutput.value;
@@ -408,6 +626,179 @@ async function copyXyzText() {
     xyzTextOutput.focus();
     xyzTextOutput.select();
     setStatus("Auto-copy blocked; text selected, press Ctrl+C.");
+  }
+}
+
+function parseXyzTrajectory(text) {
+  if (!text || typeof text !== "string") return [];
+  const lines = text.split(/\r?\n/);
+  const frames = [];
+  let i = 0;
+  while (i < lines.length) {
+    const count = Number(lines[i]?.trim());
+    if (!Number.isInteger(count) || count <= 0) {
+      i += 1;
+      continue;
+    }
+    if (i + 1 + count >= lines.length) break;
+    const atoms = [];
+    for (let j = 0; j < count; j += 1) {
+      const row = lines[i + 2 + j]?.trim();
+      if (!row) continue;
+      const cols = row.split(/\s+/);
+      if (cols.length < 4) continue;
+      const x = Number(cols[1]);
+      const y = Number(cols[2]);
+      const z = Number(cols[3]);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        continue;
+      }
+      atoms.push({ element: cols[0], x, y, z });
+    }
+    if (atoms.length === count) {
+      frames.push({ atoms });
+    }
+    i += count + 2;
+  }
+  return frames;
+}
+
+function sanitizeFrameCount(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 21;
+  const rounded = Math.max(5, Math.min(401, Math.round(n)));
+  return rounded % 2 === 0 ? rounded + 1 : rounded;
+}
+
+function resampleTrajectory(frames, targetCount) {
+  if (!Array.isArray(frames) || frames.length === 0) return [];
+  if (!Number.isInteger(targetCount) || targetCount <= 1) return frames;
+  if (frames.length === targetCount) return frames;
+
+  const sourceCount = frames.length;
+  const maxT = sourceCount - 1;
+  const out = [];
+
+  for (let i = 0; i < targetCount; i += 1) {
+    const t = (i * maxT) / (targetCount - 1);
+    const left = Math.floor(t);
+    const right = Math.min(sourceCount - 1, left + 1);
+    const alpha = t - left;
+    const a = frames[left].atoms;
+    const b = frames[right].atoms;
+    if (!a || !b || a.length !== b.length) continue;
+    const atoms = a.map((atom, idx) => ({
+      element: atom.element,
+      x: atom.x + (b[idx].x - atom.x) * alpha,
+      y: atom.y + (b[idx].y - atom.y) * alpha,
+      z: atom.z + (b[idx].z - atom.z) * alpha,
+    }));
+    out.push({ atoms });
+  }
+
+  return out.length ? out : frames;
+}
+
+function startVibrationPlayback(mode) {
+  if (!state.viewer) return;
+  const parsed = parseXyzTrajectory(mode?.xyz_trajectory || "");
+  if (!parsed.length) {
+    setStatus(
+      `Imaginary mode ${mode?.mode_index ?? "?"} has no valid XYZ frames.`,
+    );
+    return;
+  }
+  const targetCount = sanitizeFrameCount(
+    vibrationFrameCountInput?.value ?? state.vibration.frameCount,
+  );
+  state.vibration.frameCount = targetCount;
+  if (vibrationFrameCountInput) {
+    vibrationFrameCountInput.value = String(targetCount);
+  }
+  const frames = resampleTrajectory(parsed, targetCount);
+
+  stopVibrationPlayback({ silent: true });
+  clearAtomSelection();
+  state.vibration.activeMode = mode;
+  state.vibration.parsedFrames = frames;
+  state.vibration.currentFrame = 0;
+  if (clearMeasureBtn) {
+    clearMeasureBtn.classList.add("hidden");
+  }
+
+  if (vibrationPanel) vibrationPanel.classList.remove("hidden");
+  if (vibrationTitle) {
+    vibrationTitle.textContent = `Imaginary Frequency (${Number(mode.frequency_cm1).toFixed(2)} cm^-1)`;
+  }
+  if (vibrationSlider) {
+    vibrationSlider.max = String(Math.max(0, frames.length - 1));
+    vibrationSlider.value = "0";
+  }
+  renderVibrationFrame(0);
+
+  state.vibration.timer = window.setInterval(() => {
+    if (!state.vibration.activeMode) return;
+    const next =
+      (state.vibration.currentFrame + 1) % state.vibration.parsedFrames.length;
+    renderVibrationFrame(next);
+    if (vibrationSlider) {
+      vibrationSlider.value = String(next);
+    }
+  }, state.vibration.intervalMs);
+  renderFrequencyPanel();
+}
+
+function renderVibrationFrame(index) {
+  if (!state.viewer) return;
+  if (!state.vibration.activeMode) return;
+  const frames = state.vibration.parsedFrames;
+  if (!frames.length) return;
+  if (index < 0 || index >= frames.length) return;
+  state.vibration.currentFrame = index;
+  const frame = frames[index];
+  const mol = toMolWithInferredBondOrders(frame.atoms);
+
+  state.viewer.clear();
+  state.viewer.addModel(mol, "mol");
+  const colorscheme = { prop: "elem", map: cpkColors };
+  state.viewer.setStyle(
+    {},
+    {
+      stick: { radius: 0.15, colorscheme },
+      sphere: { scale: 0.3, colorscheme },
+    },
+  );
+  state.viewer.render();
+  if (vibrationFrameInfo) {
+    vibrationFrameInfo.textContent = `${index + 1} / ${frames.length}`;
+  }
+}
+
+function stopVibrationPlayback({ silent = false } = {}) {
+  if (state.vibration.timer) {
+    window.clearInterval(state.vibration.timer);
+    state.vibration.timer = null;
+  }
+  const hadActive = Boolean(state.vibration.activeMode);
+  state.vibration.activeMode = null;
+  state.vibration.parsedFrames = [];
+  state.vibration.currentFrame = 0;
+  if (vibrationPanel) vibrationPanel.classList.add("hidden");
+  if (vibrationSlider) {
+    vibrationSlider.value = "0";
+    vibrationSlider.max = "0";
+  }
+  if (vibrationFrameInfo) {
+    vibrationFrameInfo.textContent = "0 / 0";
+  }
+  if (hadActive && state.frames.length > 0) {
+    renderFrame(state.currentIndex);
+  }
+  if (clearMeasureBtn) {
+    clearMeasureBtn.classList.remove("hidden");
+  }
+  if (hadActive) {
+    renderFrequencyPanel();
   }
 }
 
@@ -513,7 +904,19 @@ async function loadData() {
       throw new Error(await parseApiError(response));
     }
     const data = await response.json();
-    loadFrames(data.frames, data.source, data.final_converged ?? null);
+    loadFrames(
+      data.frames,
+      data.source,
+      data.final_converged ?? null,
+      data.charge ?? null,
+      data.multiplicity ?? null,
+      data.frequency ?? {
+        has_frequency: false,
+        status: "No frequency calculation",
+        imaginary_modes: [],
+        thermochemistry: null,
+      },
+    );
   } catch (err) {
     setStatus(`Failed to load data: ${err.message}`);
   }
@@ -537,8 +940,8 @@ function updateFinalConvergenceBadge() {
     finalConvergenceBadge.textContent = "Not converged";
     return;
   }
-  finalConvergenceBadge.classList.add("not-converged");
-  finalConvergenceBadge.textContent = "Not converged";
+  finalConvergenceBadge.classList.add("unknown");
+  finalConvergenceBadge.textContent = "Unknown";
 }
 
 async function load3DMol() {

@@ -11,6 +11,70 @@
       <h1>ORCA Energy + 3D Coordinates Viewer</h1>
       <section id="status" class="status">Loading parsed ORCA data...</section>
 
+      <section class="energy">
+        <div>Energy (Hartree): <strong id="energyValue">N/A</strong></div>
+        <span id="finalConvergenceBadge" class="convergence-badge unknown">
+          Unknown
+        </span>
+      </section>
+
+      <section class="frequency">
+        <div>Frequency Check: <strong id="freqStatus">N/A</strong></div>
+        <div id="imagModeList" class="imag-mode-list"></div>
+        <div id="thermoPanel" class="thermo-panel hidden">
+          <div class="thermo-title">Thermochemistry</div>
+          <div class="thermo-row">
+            <span class="thermo-key">Electronic energy</span>
+            <strong id="thermoElectronicEnergy">N/A</strong>
+          </div>
+          <div class="thermo-row">
+            <span class="thermo-key">Final Gibbs free energy</span>
+            <strong id="thermoGibbsFreeEnergy">N/A</strong>
+          </div>
+          <div class="thermo-row">
+            <span class="thermo-key">G-E(el)</span>
+            <strong id="thermoGibbsCorrection">N/A</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="vibrationPanel" class="vibration-panel hidden">
+        <div class="vibration-head">
+          <strong id="vibrationTitle">Imaginary Frequency Animation</strong>
+        </div>
+        <div class="vibration-controls">
+          <label for="vibrationSlider">Vibration Frame</label>
+          <input
+            id="vibrationSlider"
+            type="range"
+            cf
+            min="0"
+            max="0"
+            value="0"
+          />
+          <span id="vibrationFrameInfo">0 / 0</span>
+          <label for="vibrationFrameCount">Frames</label>
+          <input
+            id="vibrationFrameCount"
+            type="number"
+            min="5"
+            max="401"
+            step="2"
+            value="21"
+          />
+        </div>
+      </section>
+
+      <section class="viewer-wrap">
+        <button id="toggleAtomIndexBtn" class="atom-index-btn" type="button">
+          Show Atom Indices
+        </button>
+        <button id="clearMeasureBtn" class="measure-clear-btn" type="button">
+          Clear Measure
+        </button>
+        <section id="viewer" class="viewer"></section>
+      </section>
+
       <section class="timeline">
         <label for="frameSlider">Frame</label>
         <input id="frameSlider" type="range" min="0" max="0" value="0" />
@@ -18,14 +82,14 @@
         <button id="exportXyzBtn" class="toggle-btn" type="button" disabled>
           Show XYZ Text
         </button>
-        <button id="toggleAtomIndexBtn" class="toggle-btn" type="button">
-          Show Atom Indices
+        <button id="exportGjfBtn" class="toggle-btn" type="button" disabled>
+          Show GJF Text
         </button>
       </section>
 
       <section id="xyzTextPanel" class="xyz-panel hidden">
         <div class="xyz-panel-head">
-          <strong>Current Frame XYZ</strong>
+          <strong id="textPanelTitle">Current Frame XYZ</strong>
           <button id="copyXyzBtn" class="toggle-btn" type="button">Copy</button>
         </div>
         <textarea
@@ -34,13 +98,6 @@
           readonly
           spellcheck="false"
         ></textarea>
-      </section>
-
-      <section class="energy">
-        <div>Energy (Hartree): <strong id="energyValue">N/A</strong></div>
-        <span id="finalConvergenceBadge" class="convergence-badge unknown">
-          Unknown
-        </span>
       </section>
 
       <section class="energy-chart">
@@ -53,13 +110,6 @@
         <div class="energy-chart-hint">
           Click a point to jump frame; drag or wheel to zoom.
         </div>
-      </section>
-
-      <section class="viewer-wrap">
-        <button id="clearMeasureBtn" class="measure-clear-btn" type="button">
-          Clear Measure
-        </button>
-        <section id="viewer" class="viewer"></section>
       </section>
     </main>
 
