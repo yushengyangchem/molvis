@@ -23,6 +23,9 @@ const INDEX_HTML: &str = include_str!("../web/index.html");
 const APP_JS: &str = include_str!("../web/app.js");
 const STYLE_CSS: &str = include_str!("../web/style.css");
 const CPK_COLORS_JS: &str = include_str!("../web/cpkColors.js");
+const GEOMETRY_JS: &str = include_str!("../web/modules/geometry.js");
+const MEASUREMENT_JS: &str = include_str!("../web/modules/measurement.js");
+const MOL_BUILDER_JS: &str = include_str!("../web/modules/molBuilder.js");
 
 #[derive(Clone)]
 struct AppState {
@@ -116,6 +119,9 @@ async fn main() {
         .route("/app.js", get(app_js))
         .route("/style.css", get(style_css))
         .route("/cpkColors.js", get(cpk_colors_js))
+        .route("/modules/geometry.js", get(geometry_js))
+        .route("/modules/measurement.js", get(measurement_js))
+        .route("/modules/molBuilder.js", get(mol_builder_js))
         .route("/3Dmol-min.js", get(local_3dmol_js))
         .route("/plotly.min.js", get(local_plotly_js))
         .route("/api/data", get(get_parsed_data))
@@ -160,6 +166,18 @@ async fn style_css() -> Response {
 
 async fn cpk_colors_js() -> Response {
     static_response("text/javascript; charset=utf-8", CPK_COLORS_JS)
+}
+
+async fn geometry_js() -> Response {
+    static_response("text/javascript; charset=utf-8", GEOMETRY_JS)
+}
+
+async fn measurement_js() -> Response {
+    static_response("text/javascript; charset=utf-8", MEASUREMENT_JS)
+}
+
+async fn mol_builder_js() -> Response {
+    static_response("text/javascript; charset=utf-8", MOL_BUILDER_JS)
 }
 
 async fn local_3dmol_js() -> Response {

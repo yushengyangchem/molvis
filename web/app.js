@@ -1,4 +1,10 @@
 import { cpkColors } from "./cpkColors.js";
+import { toMolWithInferredBondOrders } from "./modules/molBuilder.js";
+import {
+  addSelectionOverlay,
+  buildMeasurementStatus,
+  getPickedAtomIndex,
+} from "./modules/measurement.js";
 
 const state = {
   frames: [],
@@ -27,39 +33,6 @@ const viewerEl = document.getElementById("viewer");
 const toggleAtomIndexBtn = document.getElementById("toggleAtomIndexBtn");
 const clearMeasureBtn = document.getElementById("clearMeasureBtn");
 const ENERGY_DECIMALS = 12;
-const BOND_TOLERANCE_SCALE = 1.25;
-const MIN_BOND_DISTANCE = 0.35;
-
-const COVALENT_RADII = {
-  H: 0.31,
-  B: 0.84,
-  C: 0.76,
-  N: 0.71,
-  O: 0.66,
-  F: 0.57,
-  P: 1.07,
-  S: 1.05,
-  Cl: 1.02,
-  Br: 1.2,
-  I: 1.39,
-  Si: 1.11,
-};
-
-const PREFERRED_VALENCE = {
-  H: 1,
-  B: 3,
-  C: 4,
-  N: 3,
-  O: 2,
-  F: 1,
-  P: 3,
-  S: 2,
-  Cl: 1,
-  Br: 1,
-  I: 1,
-  Si: 4,
-};
-const AROMATIC_ELEMENTS = new Set(["B", "C", "N", "O", "P", "S"]);
 
 bindEvents();
 bootstrap();
@@ -88,6 +61,7 @@ function bindEvents() {
     const idx = Number(e.target.value);
     scheduleRenderFrame(idx);
   });
+
   toggleAtomIndexBtn.addEventListener("click", () => {
     state.showAtomIndices = !state.showAtomIndices;
     updateAtomIndexToggle();
@@ -95,6 +69,7 @@ function bindEvents() {
       renderFrame(state.currentIndex);
     }
   });
+
   clearMeasureBtn?.addEventListener("click", () => {
     clearSelectionAndRefresh("Measurement selection cleared.");
   });
@@ -103,6 +78,7 @@ function bindEvents() {
     resizeViewer();
     resizeEnergyTrend();
   });
+
   if (window.ResizeObserver) {
     const observer = new ResizeObserver(() => {
       resizeViewer();
@@ -113,6 +89,7 @@ function bindEvents() {
       observer.observe(energyTrendChart);
     }
   }
+
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (!state.selectedAtomIndices.length) return;
@@ -149,18 +126,20 @@ function loadFrames(frames, source) {
 function renderFrame(index, { showLabels = state.showAtomIndices } = {}) {
   if (!state.frames.length) return;
   if (!state.viewer) return;
+
   const frameChanged = state.currentIndex !== index;
   state.currentIndex = index;
   if (frameChanged) {
     clearAtomSelection();
   }
-  const frame = state.frames[index];
 
+  const frame = state.frames[index];
   let mol = state.inferredMolCache.get(index);
   if (!mol) {
     mol = toMolWithInferredBondOrders(frame.atoms);
     state.inferredMolCache.set(index, mol);
   }
+
   state.viewer.clear();
   state.viewer.addModel(mol, "mol");
   const colorscheme = { prop: "elem", map: cpkColors };
@@ -174,16 +153,21 @@ function renderFrame(index, { showLabels = state.showAtomIndices } = {}) {
   state.viewer.setClickable({}, true, (atom) => {
     onAtomPicked(atom);
   });
+
   if (showLabels) {
     addAtomIndexLabels(frame.atoms);
   }
-  addSelectionOverlay(frame);
+
+  if (state.selectedAtomFrame === state.currentIndex) {
+    addSelectionOverlay(state.viewer, frame, state.selectedAtomIndices);
+  }
+
   if (!state.hasAutoZoomed) {
     state.viewer.zoomTo();
     state.hasAutoZoomed = true;
   }
-  state.viewer.render();
 
+  state.viewer.render();
   updateMeta();
 }
 
@@ -238,14 +222,9 @@ function onAtomPicked(atom) {
     state.selectedAtomIndices.push(atomIndex);
   }
 
-  setStatus(buildMeasurementStatus());
+  const frame = state.frames[state.currentIndex];
+  setStatus(buildMeasurementStatus(frame, state.selectedAtomIndices));
   renderFrame(state.currentIndex);
-}
-
-function getPickedAtomIndex(atom) {
-  if (Number.isInteger(atom?.index)) return atom.index;
-  if (Number.isInteger(atom?.serial)) return atom.serial - 1;
-  return null;
 }
 
 function clearAtomSelection() {
@@ -261,183 +240,6 @@ function clearSelectionAndRefresh(statusText) {
   if (state.frames.length > 0) {
     renderFrame(state.currentIndex);
   }
-}
-
-function buildMeasurementStatus() {
-  const frame = state.frames[state.currentIndex];
-  const ids = state.selectedAtomIndices;
-  const suffix = " (Esc or Clear Measure to reset).";
-
-  if (!frame || ids.length === 0) {
-    return `Selection cleared.${suffix}`;
-  }
-  if (ids.length === 1) {
-    return `Picked atom ${ids[0]}. Pick a 2nd atom for bond length${suffix}`;
-  }
-  if (ids.length === 2) {
-    const a = frame.atoms[ids[0]];
-    const b = frame.atoms[ids[1]];
-    if (!a || !b) return `Pick atoms to measure.${suffix}`;
-    const d = distance(a, b);
-    return `Bond length: ${ids[0]}-${ids[1]} = ${d.toFixed(3)} Å. Pick a 3rd atom for angle${suffix}`;
-  }
-  if (ids.length === 3) {
-    const [a, b, c] = ids.map((id) => frame.atoms[id]);
-    if (!a || !b || !c) return `Pick atoms to measure.${suffix}`;
-    const angle = angleDegrees(a, b, c);
-    return `Angle: ${ids[0]}-${ids[1]}-${ids[2]} = ${angle.toFixed(2)} deg. Pick a 4th atom for dihedral${suffix}`;
-  }
-
-  const [a, b, c, d] = ids.map((id) => frame.atoms[id]);
-  if (!a || !b || !c || !d) return `Pick atoms to measure.${suffix}`;
-  const dih = dihedralDegrees(a, b, c, d);
-  return `Dihedral: ${ids[0]}-${ids[1]}-${ids[2]}-${ids[3]} = ${dih.toFixed(2)} deg. Pick another atom to start next measurement${suffix}`;
-}
-
-function addSelectionOverlay(frame) {
-  if (state.selectedAtomFrame !== state.currentIndex) return;
-  const ids = state.selectedAtomIndices;
-  const atoms = ids.map((id) => frame.atoms[id]);
-  if (!atoms.length || atoms.some((a) => !a)) return;
-
-  const tags = ["A", "B", "C", "D"];
-  for (let i = 0; i < atoms.length; i += 1) {
-    const atom = atoms[i];
-    state.viewer.addSphere({
-      center: { x: atom.x, y: atom.y, z: atom.z },
-      radius: 0.34,
-      color: "#f97316",
-      opacity: 0.7,
-    });
-    state.viewer.addLabel(`${tags[i]}${ids[i]}`, {
-      position: { x: atom.x, y: atom.y, z: atom.z },
-      fontColor: "#7c2d12",
-      backgroundColor: "#ffedd5",
-      backgroundOpacity: 0.88,
-      borderThickness: 0,
-      fontSize: 12,
-      inFront: true,
-    });
-  }
-
-  for (let i = 0; i < atoms.length - 1; i += 1) {
-    const a = atoms[i];
-    const b = atoms[i + 1];
-    state.viewer.addLine({
-      start: { x: a.x, y: a.y, z: a.z },
-      end: { x: b.x, y: b.y, z: b.z },
-      dashed: true,
-      color: "#f97316",
-      linewidth: 2,
-    });
-  }
-
-  if (atoms.length === 2) {
-    const [a, b] = atoms;
-    state.viewer.addLabel(`${distance(a, b).toFixed(3)} Å`, {
-      position: midpoint(a, b),
-      fontColor: "#111827",
-      backgroundColor: "#fff7d1",
-      backgroundOpacity: 0.8,
-      borderThickness: 0,
-      fontSize: 13,
-      inFront: true,
-    });
-  }
-
-  if (atoms.length === 3) {
-    const [a, b, c] = atoms;
-    state.viewer.addLabel(`${angleDegrees(a, b, c).toFixed(2)} deg`, {
-      position: centroid3(a, b, c),
-      fontColor: "#111827",
-      backgroundColor: "#e0f2fe",
-      backgroundOpacity: 0.84,
-      borderThickness: 0,
-      fontSize: 13,
-      inFront: true,
-    });
-  }
-
-  if (atoms.length >= 4) {
-    const [a, b, c, d] = atoms;
-    state.viewer.addLabel(`${dihedralDegrees(a, b, c, d).toFixed(2)} deg`, {
-      position: midpoint(b, c),
-      fontColor: "#111827",
-      backgroundColor: "#ede9fe",
-      backgroundOpacity: 0.84,
-      borderThickness: 0,
-      fontSize: 13,
-      inFront: true,
-    });
-  }
-}
-
-function midpoint(a, b) {
-  return {
-    x: (a.x + b.x) / 2,
-    y: (a.y + b.y) / 2,
-    z: (a.z + b.z) / 2,
-  };
-}
-
-function centroid3(a, b, c) {
-  return {
-    x: (a.x + b.x + c.x) / 3,
-    y: (a.y + b.y + c.y) / 3,
-    z: (a.z + b.z + c.z) / 3,
-  };
-}
-
-function angleDegrees(a, b, c) {
-  const ba = { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
-  const bc = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
-  const baNorm = norm(ba);
-  const bcNorm = norm(bc);
-  if (baNorm < 1e-12 || bcNorm < 1e-12) return 0;
-  const cosTheta = clamp(dot(ba, bc) / (baNorm * bcNorm), -1, 1);
-  return (Math.acos(cosTheta) * 180) / Math.PI;
-}
-
-function dihedralDegrees(a, b, c, d) {
-  const b1 = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
-  const b2 = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
-  const b3 = { x: d.x - c.x, y: d.y - c.y, z: d.z - c.z };
-  const n1 = cross(b1, b2);
-  const n2 = cross(b2, b3);
-  const b2norm = norm(b2);
-  const n1norm = norm(n1);
-  const n2norm = norm(n2);
-  if (b2norm < 1e-12 || n1norm < 1e-12 || n2norm < 1e-12) return 0;
-
-  const b2unit = scale(b2, 1 / b2norm);
-  const m1 = cross(n1, b2unit);
-  const x = dot(n1, n2);
-  const y = dot(m1, n2);
-  return (Math.atan2(y, x) * 180) / Math.PI;
-}
-
-function dot(u, v) {
-  return u.x * v.x + u.y * v.y + u.z * v.z;
-}
-
-function cross(u, v) {
-  return {
-    x: u.y * v.z - u.z * v.y,
-    y: u.z * v.x - u.x * v.z,
-    z: u.x * v.y - u.y * v.x,
-  };
-}
-
-function norm(v) {
-  return Math.hypot(v.x, v.y, v.z);
-}
-
-function scale(v, factor) {
-  return { x: v.x * factor, y: v.y * factor, z: v.z * factor };
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
 }
 
 function clearViewer() {
@@ -469,6 +271,7 @@ function updateMeta() {
   } else {
     energyValue.textContent = "N/A";
   }
+
   drawEnergyTrend();
 }
 
@@ -497,246 +300,6 @@ function addAtomIndexLabels(atoms) {
       inFront: true,
     });
   });
-}
-
-function toMolWithInferredBondOrders(atoms) {
-  const bonds = inferBondsWithOrders(atoms);
-  const lines = [
-    "molvis",
-    "3Dmol inferred bonds",
-    "",
-    formatMolCounts(atoms.length, bonds.length),
-  ];
-
-  for (const atom of atoms) {
-    lines.push(
-      `${padMolFloat(atom.x, 10, 4)}${padMolFloat(atom.y, 10, 4)}${padMolFloat(atom.z, 10, 4)} ${padMolAtom(atom.element)}  0  0  0  0  0  0  0  0  0  0  0  0`,
-    );
-  }
-
-  for (const bond of bonds) {
-    lines.push(
-      `${String(bond.a + 1).padStart(3, " ")}${String(bond.b + 1).padStart(3, " ")}${String(bond.order).padStart(3, " ")}  0  0  0  0`,
-    );
-  }
-
-  lines.push("M  END");
-  return lines.join("\n");
-}
-
-function inferBondsWithOrders(atoms) {
-  const candidateBonds = [];
-  for (let i = 0; i < atoms.length; i += 1) {
-    for (let j = i + 1; j < atoms.length; j += 1) {
-      const a = atoms[i];
-      const b = atoms[j];
-      const dist = distance(a, b);
-      const maxDist =
-        (getCovalentRadius(a.element) + getCovalentRadius(b.element)) *
-        BOND_TOLERANCE_SCALE;
-      if (dist >= MIN_BOND_DISTANCE && dist <= maxDist) {
-        candidateBonds.push({ a: i, b: j, dist, order: 1 });
-      }
-    }
-  }
-
-  const valenceUsed = new Array(atoms.length).fill(0);
-  for (const bond of candidateBonds) {
-    valenceUsed[bond.a] += 1;
-    valenceUsed[bond.b] += 1;
-  }
-
-  const remainingValence = atoms.map((atom, idx) => {
-    const preferred = getPreferredValence(atom.element);
-    return Math.max(0, preferred - valenceUsed[idx]);
-  });
-
-  const incrementOrderPass = () => {
-    let changed = false;
-    const sorted = [...candidateBonds].sort((x, y) => x.dist - y.dist);
-    for (const bond of sorted) {
-      const maxOrder = getMaxBondOrder(
-        atoms[bond.a].element,
-        atoms[bond.b].element,
-      );
-      if (bond.order >= maxOrder) continue;
-      if (remainingValence[bond.a] <= 0 || remainingValence[bond.b] <= 0)
-        continue;
-      bond.order += 1;
-      remainingValence[bond.a] -= 1;
-      remainingValence[bond.b] -= 1;
-      changed = true;
-    }
-    return changed;
-  };
-
-  incrementOrderPass();
-  incrementOrderPass();
-  assignAromaticRings(atoms, candidateBonds);
-
-  return candidateBonds;
-}
-
-function assignAromaticRings(atoms, bonds) {
-  if (bonds.length < 6) return;
-  const adjacency = new Map();
-  const bondByEdge = new Map();
-
-  for (const bond of bonds) {
-    if (!adjacency.has(bond.a)) adjacency.set(bond.a, []);
-    if (!adjacency.has(bond.b)) adjacency.set(bond.b, []);
-    adjacency.get(bond.a).push(bond.b);
-    adjacency.get(bond.b).push(bond.a);
-    bondByEdge.set(edgeKey(bond.a, bond.b), bond);
-  }
-
-  const rings = findSixMemberCycles(atoms.length, adjacency);
-  for (const ring of rings) {
-    if (!isAromaticRing(ring, atoms, adjacency, bondByEdge)) continue;
-    applyKekulePattern(ring, bondByEdge);
-  }
-}
-
-function applyKekulePattern(ring, bondByEdge) {
-  for (let i = 0; i < ring.length; i += 1) {
-    const a = ring[i];
-    const b = ring[(i + 1) % ring.length];
-    const bond = bondByEdge.get(edgeKey(a, b));
-    if (!bond) continue;
-    bond.order = i % 2 === 0 ? 2 : 1;
-  }
-}
-
-function isAromaticRing(ring, atoms, adjacency, bondByEdge) {
-  const lengths = [];
-
-  for (let i = 0; i < ring.length; i += 1) {
-    const atomIdx = ring[i];
-    const element = normalizeElement(atoms[atomIdx]?.element);
-    if (!AROMATIC_ELEMENTS.has(element)) return false;
-    if ((adjacency.get(atomIdx)?.length ?? 0) < 2) return false;
-
-    const next = ring[(i + 1) % ring.length];
-    const bond = bondByEdge.get(edgeKey(atomIdx, next));
-    if (!bond) return false;
-    lengths.push(bond.dist);
-  }
-
-  const minLen = Math.min(...lengths);
-  const maxLen = Math.max(...lengths);
-  const avgLen =
-    lengths.reduce((sum, value) => sum + value, 0) / lengths.length;
-
-  if (avgLen < 1.3 || avgLen > 1.47) return false;
-  if (maxLen - minLen > 0.16) return false;
-  return true;
-}
-
-function findSixMemberCycles(atomCount, adjacency) {
-  const seen = new Set();
-  const cycles = [];
-
-  const dfs = (start, current, path, used) => {
-    if (path.length === 6) {
-      if (adjacency.get(current)?.includes(start)) {
-        const key = canonicalCycleKey(path);
-        if (!seen.has(key)) {
-          seen.add(key);
-          cycles.push([...path]);
-        }
-      }
-      return;
-    }
-
-    const neighbors = adjacency.get(current) ?? [];
-    for (const next of neighbors) {
-      if (next === start) continue;
-      if (used.has(next)) continue;
-      if (next < start) continue;
-      used.add(next);
-      path.push(next);
-      dfs(start, next, path, used);
-      path.pop();
-      used.delete(next);
-    }
-  };
-
-  for (let start = 0; start < atomCount; start += 1) {
-    const used = new Set([start]);
-    dfs(start, start, [start], used);
-  }
-
-  return cycles;
-}
-
-function canonicalCycleKey(cycle) {
-  const n = cycle.length;
-  const variants = [];
-
-  for (let shift = 0; shift < n; shift += 1) {
-    const forward = [];
-    const backward = [];
-    for (let i = 0; i < n; i += 1) {
-      forward.push(cycle[(shift + i) % n]);
-      backward.push(cycle[(shift - i + n) % n]);
-    }
-    variants.push(forward.join("-"));
-    variants.push(backward.join("-"));
-  }
-
-  variants.sort();
-  return variants[0];
-}
-
-function edgeKey(a, b) {
-  return a < b ? `${a}-${b}` : `${b}-${a}`;
-}
-
-function getMaxBondOrder(elemA, elemB) {
-  if (isSingleOnlyElement(elemA) || isSingleOnlyElement(elemB)) {
-    return 1;
-  }
-  return 3;
-}
-
-function isSingleOnlyElement(element) {
-  const normalized = normalizeElement(element);
-  return ["H", "F", "Cl", "Br", "I"].includes(normalized);
-}
-
-function getPreferredValence(element) {
-  return PREFERRED_VALENCE[normalizeElement(element)] ?? 4;
-}
-
-function getCovalentRadius(element) {
-  return COVALENT_RADII[normalizeElement(element)] ?? 0.77;
-}
-
-function distance(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  const dz = a.z - b.z;
-  return Math.hypot(dx, dy, dz);
-}
-
-function formatMolCounts(atomCount, bondCount) {
-  return `${String(atomCount).padStart(3, " ")}${String(bondCount).padStart(3, " ")}  0  0  0  0  0  0  0  0  1 V2000`;
-}
-
-function padMolFloat(value, width, decimals) {
-  return Number(value).toFixed(decimals).padStart(width, " ");
-}
-
-function padMolAtom(element) {
-  return normalizeElement(element).slice(0, 3).padEnd(3, " ");
-}
-
-function normalizeElement(element) {
-  if (!element) return "C";
-  const text = String(element).trim();
-  if (!text) return "C";
-  if (text.length === 1) return text.toUpperCase();
-  return text[0].toUpperCase() + text.slice(1).toLowerCase();
 }
 
 function setStatus(text) {
