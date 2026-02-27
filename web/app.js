@@ -8,6 +8,7 @@ import {
 
 const state = {
   frames: [],
+  finalConverged: null,
   viewer: null,
   currentIndex: 0,
   hasAutoZoomed: false,
@@ -28,6 +29,7 @@ const statusEl = document.getElementById("status");
 const slider = document.getElementById("frameSlider");
 const frameInfo = document.getElementById("frameInfo");
 const energyValue = document.getElementById("energyValue");
+const finalConvergenceBadge = document.getElementById("finalConvergenceBadge");
 const energyTrendChart = document.getElementById("energyTrendChart");
 const viewerEl = document.getElementById("viewer");
 const toggleAtomIndexBtn = document.getElementById("toggleAtomIndexBtn");
@@ -97,8 +99,9 @@ function bindEvents() {
   });
 }
 
-function loadFrames(frames, source) {
+function loadFrames(frames, source, finalConverged = null) {
   state.frames = frames || [];
+  state.finalConverged = finalConverged;
   state.currentIndex = 0;
   state.hasAutoZoomed = false;
   state.pendingFrameIndex = null;
@@ -271,6 +274,7 @@ function updateMeta() {
   } else {
     energyValue.textContent = "N/A";
   }
+  updateFinalConvergenceBadge();
 
   drawEnergyTrend();
 }
@@ -408,10 +412,32 @@ async function loadData() {
       throw new Error(await parseApiError(response));
     }
     const data = await response.json();
-    loadFrames(data.frames, data.source);
+    loadFrames(data.frames, data.source, data.final_converged ?? null);
   } catch (err) {
     setStatus(`Failed to load data: ${err.message}`);
   }
+}
+
+function updateFinalConvergenceBadge() {
+  if (!finalConvergenceBadge) return;
+
+  finalConvergenceBadge.classList.remove(
+    "converged",
+    "not-converged",
+    "unknown",
+  );
+  if (state.finalConverged === true) {
+    finalConvergenceBadge.classList.add("converged");
+    finalConvergenceBadge.textContent = "Converged";
+    return;
+  }
+  if (state.finalConverged === false) {
+    finalConvergenceBadge.classList.add("not-converged");
+    finalConvergenceBadge.textContent = "Not converged";
+    return;
+  }
+  finalConvergenceBadge.classList.add("not-converged");
+  finalConvergenceBadge.textContent = "Not converged";
 }
 
 async function load3DMol() {

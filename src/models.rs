@@ -19,4 +19,5 @@ pub struct Frame {
 pub struct ParseResult {
     pub source: String,
     pub frames: Vec<Frame>,
+    pub final_converged: Option<bool>,
 }

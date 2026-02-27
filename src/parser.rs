@@ -3,6 +3,7 @@ use crate::models::{Atom, Frame, ParseResult};
 pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
     let mut frames: Vec<Frame> = Vec::new();
     let mut pending_energy: Option<f64> = None;
+    let final_converged = parse_final_convergence(content);
 
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0usize;
@@ -64,6 +65,7 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
     ParseResult {
         source: source.to_string(),
         frames,
+        final_converged,
     }
 }
 
@@ -74,6 +76,21 @@ fn parse_energy_line(line: &str) -> Option<f64> {
             .rev()
             .find_map(|tok| tok.parse::<f64>().ok());
     }
+    None
+}
+
+fn parse_final_convergence(content: &str) -> Option<bool> {
+    let upper = content.to_ascii_uppercase();
+
+    if upper.contains("THE OPTIMIZATION HAS CONVERGED")
+        || upper.contains("*** OPTIMIZATION RUN DONE ***")
+    {
+        return Some(true);
+    }
+    if upper.contains("THE OPTIMIZATION HAS NOT CONVERGED") {
+        return Some(false);
+    }
+
     None
 }
 
@@ -103,6 +120,7 @@ FINAL SINGLE POINT ENERGY     -10.6000
         assert_eq!(result.frames[1].atoms.len(), 2);
         assert_eq!(result.frames[0].energy_hartree, Some(-10.5));
         assert_eq!(result.frames[1].energy_hartree, Some(-10.6));
+        assert_eq!(result.final_converged, None);
     }
 
     #[test]
@@ -110,5 +128,34 @@ FINAL SINGLE POINT ENERGY     -10.6000
         let content = "FINAL SINGLE POINT ENERGY     -1.2345";
         let result = parse_orca_out("test.out", content);
         assert!(result.frames.is_empty());
+        assert_eq!(result.final_converged, None);
+    }
+
+    #[test]
+    fn parse_final_convergence_true() {
+        let content = r#"
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+C       0.0000      0.0000      0.0000
+H       0.0000      0.0000      1.0800
+
+THE OPTIMIZATION HAS CONVERGED
+"#;
+        let result = parse_orca_out("test.out", content);
+        assert_eq!(result.final_converged, Some(true));
+    }
+
+    #[test]
+    fn parse_final_convergence_false() {
+        let content = r#"
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+C       0.0000      0.0000      0.0000
+H       0.0000      0.0000      1.0800
+
+THE OPTIMIZATION HAS NOT CONVERGED
+"#;
+        let result = parse_orca_out("test.out", content);
+        assert_eq!(result.final_converged, Some(false));
     }
 }
