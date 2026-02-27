@@ -119,18 +119,18 @@ fn extract_last_int(line: &str) -> Option<i64> {
 }
 
 fn parse_final_convergence(content: &str) -> Option<bool> {
-    let upper = content.to_ascii_uppercase();
+    let mut final_converged: Option<bool> = None;
 
-    if upper.contains("THE OPTIMIZATION HAS CONVERGED")
-        || upper.contains("*** OPTIMIZATION RUN DONE ***")
-    {
-        return Some(true);
-    }
-    if upper.contains("THE OPTIMIZATION HAS NOT CONVERGED") {
-        return Some(false);
+    for line in content.lines() {
+        let upper = line.to_ascii_uppercase();
+        if upper.contains("THE OPTIMIZATION HAS CONVERGED") {
+            final_converged = Some(true);
+        } else if upper.contains("THE OPTIMIZATION HAS NOT CONVERGED") {
+            final_converged = Some(false);
+        }
     }
 
-    None
+    final_converged
 }
 
 #[cfg(test)]
@@ -202,6 +202,16 @@ THE OPTIMIZATION HAS NOT CONVERGED
         let result = parse_orca_out("test.out", content);
         assert_eq!(result.final_converged, Some(false));
         assert!(!result.frequency.has_frequency);
+    }
+
+    #[test]
+    fn parse_final_convergence_uses_last_optimization_status() {
+        let content = r#"
+THE OPTIMIZATION HAS CONVERGED
+THE OPTIMIZATION HAS NOT CONVERGED
+"#;
+        let result = parse_orca_out("test.out", content);
+        assert_eq!(result.final_converged, Some(false));
     }
 
     #[test]
