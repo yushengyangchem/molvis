@@ -439,6 +439,15 @@ function renderThermochemistryPanel() {
   }
 
   const thermo = report.thermochemistry || {};
+  const hasThermoValue =
+    Number.isFinite(thermo.electronic_energy_hartree) ||
+    Number.isFinite(thermo.sum_electronic_and_thermal_free_energies_hartree) ||
+    Number.isFinite(thermo.thermal_correction_to_gibbs_free_energy_hartree);
+  if (!hasThermoValue) {
+    thermoPanel.classList.add("hidden");
+    return;
+  }
+
   if (thermoElectronicEnergy) {
     thermoElectronicEnergy.textContent = formatHartree(
       thermo.electronic_energy_hartree,
@@ -616,12 +625,14 @@ async function copyXyzText() {
   if (!xyzTextOutput) return;
   const text = xyzTextOutput.value;
   if (!text) {
-    setStatus("No XYZ text to copy.");
+    const kind = state.textExportMode === "gjf" ? "GJF" : "XYZ";
+    setStatus(`No ${kind} text to copy.`);
     return;
   }
   try {
     await navigator.clipboard.writeText(text);
-    setStatus("XYZ text copied to clipboard.");
+    const kind = state.textExportMode === "gjf" ? "GJF" : "XYZ";
+    setStatus(`${kind} text copied to clipboard.`);
   } catch {
     xyzTextOutput.focus();
     xyzTextOutput.select();
