@@ -4,6 +4,7 @@ const state = {
   frames: [],
   viewer: null,
   currentIndex: 0,
+  inferredMolCache: new Map(),
   molLib: null,
   plotLib: null,
   trendEventsBound: false,
@@ -107,6 +108,7 @@ function bindEvents() {
 function loadFrames(frames, source) {
   state.frames = frames || [];
   state.currentIndex = 0;
+  state.inferredMolCache.clear();
   slider.max = Math.max(0, state.frames.length - 1);
   slider.value = 0;
 
@@ -127,7 +129,11 @@ function renderFrame(index) {
   state.currentIndex = index;
   const frame = state.frames[index];
 
-  const mol = toMolWithInferredBondOrders(frame.atoms);
+  let mol = state.inferredMolCache.get(index);
+  if (!mol) {
+    mol = toMolWithInferredBondOrders(frame.atoms);
+    state.inferredMolCache.set(index, mol);
+  }
   state.viewer.clear();
   state.viewer.addModel(mol, "mol");
   const colorscheme = { prop: "elem", map: cpkColors };
