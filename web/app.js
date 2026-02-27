@@ -4,6 +4,9 @@ const state = {
   frames: [],
   viewer: null,
   currentIndex: 0,
+  hasAutoZoomed: false,
+  pendingFrameIndex: null,
+  scheduledFrameRender: false,
   inferredMolCache: new Map(),
   molLib: null,
   plotLib: null,
@@ -79,7 +82,7 @@ async function initViewer() {
 function bindEvents() {
   slider.addEventListener("input", (e) => {
     const idx = Number(e.target.value);
-    renderFrame(idx);
+    scheduleRenderFrame(idx);
   });
   toggleAtomIndexBtn.addEventListener("click", () => {
     state.showAtomIndices = !state.showAtomIndices;
@@ -108,6 +111,9 @@ function bindEvents() {
 function loadFrames(frames, source) {
   state.frames = frames || [];
   state.currentIndex = 0;
+  state.hasAutoZoomed = false;
+  state.pendingFrameIndex = null;
+  state.scheduledFrameRender = false;
   state.inferredMolCache.clear();
   slider.max = Math.max(0, state.frames.length - 1);
   slider.value = 0;
@@ -120,7 +126,7 @@ function loadFrames(frames, source) {
   }
 
   setStatus(`Loaded ${state.frames.length} frame(s) from ${source}.`);
-  renderFrame(0);
+  scheduleRenderFrame(0);
 }
 
 function renderFrame(index) {
@@ -147,10 +153,26 @@ function renderFrame(index) {
   if (state.showAtomIndices) {
     addAtomIndexLabels(frame.atoms);
   }
-  state.viewer.zoomTo();
+  if (!state.hasAutoZoomed) {
+    state.viewer.zoomTo();
+    state.hasAutoZoomed = true;
+  }
   state.viewer.render();
 
   updateMeta();
+}
+
+function scheduleRenderFrame(index) {
+  state.pendingFrameIndex = index;
+  if (state.scheduledFrameRender) return;
+  state.scheduledFrameRender = true;
+  window.requestAnimationFrame(() => {
+    state.scheduledFrameRender = false;
+    const next = state.pendingFrameIndex;
+    state.pendingFrameIndex = null;
+    if (!Number.isInteger(next)) return;
+    renderFrame(next);
+  });
 }
 
 function clearViewer() {
