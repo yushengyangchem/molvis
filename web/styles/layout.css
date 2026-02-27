@@ -1,0 +1,80 @@
+.container {
+  max-width: 980px;
+  margin: 24px auto;
+  padding: 20px;
+}
+
+h1 {
+  margin: 0 0 16px 0;
+  font-size: 24px;
+}
+
+.controls,
+.status,
+.timeline,
+.energy,
+.frequency,
+.vibration-panel,
+.energy-chart,
+.xyz-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.status {
+  color: var(--muted);
+}
+
+.controls label,
+.timeline label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.controls input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.timeline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.timeline input {
+  flex: 1;
+}
+
+.timeline .toggle-btn {
+  background: #eef2fb;
+  color: #31415d;
+  border: 1px solid #d4dced;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.timeline .toggle-btn:hover {
+  filter: none;
+  background: #e6ecfa;
+}
+
+.timeline .toggle-btn:disabled {
+  cursor: not-allowed;
+  color: #98a2b3;
+  border-color: #e4e7ec;
+  background: #f6f7f9;
+}

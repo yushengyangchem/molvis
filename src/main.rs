@@ -21,7 +21,11 @@ use tokio::fs;
 
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const APP_JS: &str = include_str!("../web/app.js");
-const STYLE_CSS: &str = include_str!("../web/style.css");
+const BASE_CSS: &str = include_str!("../web/styles/base.css");
+const LAYOUT_CSS: &str = include_str!("../web/styles/layout.css");
+const PANELS_CSS: &str = include_str!("../web/styles/panels.css");
+const CHART_CSS: &str = include_str!("../web/styles/chart.css");
+const VIEWER_CSS: &str = include_str!("../web/styles/viewer.css");
 const CPK_COLORS_JS: &str = include_str!("../web/cpkColors.js");
 const GEOMETRY_JS: &str = include_str!("../web/modules/geometry.js");
 const MEASUREMENT_JS: &str = include_str!("../web/modules/measurement.js");
@@ -123,7 +127,11 @@ async fn main() {
         .route("/", get(index_html))
         .route("/index.html", get(index_html))
         .route("/app.js", get(app_js))
-        .route("/style.css", get(style_css))
+        .route("/styles/base.css", get(base_css))
+        .route("/styles/layout.css", get(layout_css))
+        .route("/styles/panels.css", get(panels_css))
+        .route("/styles/chart.css", get(chart_css))
+        .route("/styles/viewer.css", get(viewer_css))
         .route("/cpkColors.js", get(cpk_colors_js))
         .route("/modules/geometry.js", get(geometry_js))
         .route("/modules/measurement.js", get(measurement_js))
@@ -172,8 +180,24 @@ async fn app_js() -> Response {
     static_response("text/javascript; charset=utf-8", APP_JS)
 }
 
-async fn style_css() -> Response {
-    static_response("text/css; charset=utf-8", STYLE_CSS)
+async fn base_css() -> Response {
+    static_response("text/css; charset=utf-8", BASE_CSS)
+}
+
+async fn layout_css() -> Response {
+    static_response("text/css; charset=utf-8", LAYOUT_CSS)
+}
+
+async fn panels_css() -> Response {
+    static_response("text/css; charset=utf-8", PANELS_CSS)
+}
+
+async fn chart_css() -> Response {
+    static_response("text/css; charset=utf-8", CHART_CSS)
+}
+
+async fn viewer_css() -> Response {
+    static_response("text/css; charset=utf-8", VIEWER_CSS)
 }
 
 async fn cpk_colors_js() -> Response {

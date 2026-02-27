@@ -1,0 +1,73 @@
+#toggleAtomIndexBtn.active {
+  background: #0f8a45;
+  color: #fff;
+}
+
+.viewer-wrap {
+  position: relative;
+}
+
+.measure-clear-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 12;
+  background: #eef2fb;
+  color: #31415d;
+  border: 1px solid #d4dced;
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+.atom-index-btn {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 12;
+  background: #eef2fb;
+  color: #31415d;
+  border: 1px solid #d4dced;
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+.measure-clear-btn:hover {
+  filter: none;
+  background: #e6ecfa;
+}
+
+.atom-index-btn:hover {
+  filter: none;
+  background: #e6ecfa;
+}
+
+.measure-clear-btn.hidden {
+  display: none;
+}
+
+.viewer {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  position: relative;
+  width: 100%;
+  height: min(65vh, 640px);
+  min-height: 420px;
+  overflow: hidden;
+}
+
+.viewer canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .viewer {
+    height: 52vh;
+    min-height: 320px;
+  }
+}
