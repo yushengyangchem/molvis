@@ -7,6 +7,9 @@ const state = {
   hasAutoZoomed: false,
   pendingFrameIndex: null,
   scheduledFrameRender: false,
+  labelRenderTimer: null,
+  selectedAtomFrame: null,
+  selectedAtomIndices: [],
   inferredMolCache: new Map(),
   molLib: null,
   plotLib: null,
@@ -22,6 +25,7 @@ const energyValue = document.getElementById("energyValue");
 const energyTrendChart = document.getElementById("energyTrendChart");
 const viewerEl = document.getElementById("viewer");
 const toggleAtomIndexBtn = document.getElementById("toggleAtomIndexBtn");
+const clearMeasureBtn = document.getElementById("clearMeasureBtn");
 const ENERGY_DECIMALS = 12;
 const BOND_TOLERANCE_SCALE = 1.25;
 const MIN_BOND_DISTANCE = 0.35;
@@ -91,6 +95,9 @@ function bindEvents() {
       renderFrame(state.currentIndex);
     }
   });
+  clearMeasureBtn?.addEventListener("click", () => {
+    clearSelectionAndRefresh("Measurement selection cleared.");
+  });
 
   window.addEventListener("resize", () => {
     resizeViewer();
@@ -106,6 +113,11 @@ function bindEvents() {
       observer.observe(energyTrendChart);
     }
   }
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (!state.selectedAtomIndices.length) return;
+    clearSelectionAndRefresh("Measurement selection cleared.");
+  });
 }
 
 function loadFrames(frames, source) {
@@ -114,6 +126,11 @@ function loadFrames(frames, source) {
   state.hasAutoZoomed = false;
   state.pendingFrameIndex = null;
   state.scheduledFrameRender = false;
+  if (state.labelRenderTimer) {
+    clearTimeout(state.labelRenderTimer);
+    state.labelRenderTimer = null;
+  }
+  clearAtomSelection();
   state.inferredMolCache.clear();
   slider.max = Math.max(0, state.frames.length - 1);
   slider.value = 0;
@@ -129,10 +146,14 @@ function loadFrames(frames, source) {
   scheduleRenderFrame(0);
 }
 
-function renderFrame(index) {
+function renderFrame(index, { showLabels = state.showAtomIndices } = {}) {
   if (!state.frames.length) return;
   if (!state.viewer) return;
+  const frameChanged = state.currentIndex !== index;
   state.currentIndex = index;
+  if (frameChanged) {
+    clearAtomSelection();
+  }
   const frame = state.frames[index];
 
   let mol = state.inferredMolCache.get(index);
@@ -150,9 +171,13 @@ function renderFrame(index) {
       sphere: { scale: 0.3, colorscheme },
     },
   );
-  if (state.showAtomIndices) {
+  state.viewer.setClickable({}, true, (atom) => {
+    onAtomPicked(atom);
+  });
+  if (showLabels) {
     addAtomIndexLabels(frame.atoms);
   }
+  addSelectionOverlay(frame);
   if (!state.hasAutoZoomed) {
     state.viewer.zoomTo();
     state.hasAutoZoomed = true;
@@ -171,8 +196,248 @@ function scheduleRenderFrame(index) {
     const next = state.pendingFrameIndex;
     state.pendingFrameIndex = null;
     if (!Number.isInteger(next)) return;
-    renderFrame(next);
+    renderFrame(next, { showLabels: false });
+    scheduleLabelRender(next);
   });
+}
+
+function scheduleLabelRender(index) {
+  if (!state.showAtomIndices) return;
+  if (state.labelRenderTimer) {
+    clearTimeout(state.labelRenderTimer);
+  }
+  state.labelRenderTimer = setTimeout(() => {
+    state.labelRenderTimer = null;
+    if (state.currentIndex !== index) return;
+    if (!state.showAtomIndices) return;
+    renderFrame(index, { showLabels: true });
+  }, 120);
+}
+
+function onAtomPicked(atom) {
+  const atomIndex = getPickedAtomIndex(atom);
+  if (!Number.isInteger(atomIndex) || atomIndex < 0) {
+    return;
+  }
+
+  if (state.selectedAtomFrame !== state.currentIndex) {
+    state.selectedAtomFrame = state.currentIndex;
+    state.selectedAtomIndices = [];
+  }
+
+  const lastPicked =
+    state.selectedAtomIndices[state.selectedAtomIndices.length - 1];
+  if (lastPicked === atomIndex) {
+    clearSelectionAndRefresh("Selection cleared.");
+    return;
+  }
+
+  if (state.selectedAtomIndices.length >= 4) {
+    state.selectedAtomIndices = [atomIndex];
+  } else {
+    state.selectedAtomIndices.push(atomIndex);
+  }
+
+  setStatus(buildMeasurementStatus());
+  renderFrame(state.currentIndex);
+}
+
+function getPickedAtomIndex(atom) {
+  if (Number.isInteger(atom?.index)) return atom.index;
+  if (Number.isInteger(atom?.serial)) return atom.serial - 1;
+  return null;
+}
+
+function clearAtomSelection() {
+  state.selectedAtomFrame = null;
+  state.selectedAtomIndices = [];
+}
+
+function clearSelectionAndRefresh(statusText) {
+  clearAtomSelection();
+  if (statusText) {
+    setStatus(statusText);
+  }
+  if (state.frames.length > 0) {
+    renderFrame(state.currentIndex);
+  }
+}
+
+function buildMeasurementStatus() {
+  const frame = state.frames[state.currentIndex];
+  const ids = state.selectedAtomIndices;
+  const suffix = " (Esc or Clear Measure to reset).";
+
+  if (!frame || ids.length === 0) {
+    return `Selection cleared.${suffix}`;
+  }
+  if (ids.length === 1) {
+    return `Picked atom ${ids[0]}. Pick a 2nd atom for bond length${suffix}`;
+  }
+  if (ids.length === 2) {
+    const a = frame.atoms[ids[0]];
+    const b = frame.atoms[ids[1]];
+    if (!a || !b) return `Pick atoms to measure.${suffix}`;
+    const d = distance(a, b);
+    return `Bond length: ${ids[0]}-${ids[1]} = ${d.toFixed(3)} Å. Pick a 3rd atom for angle${suffix}`;
+  }
+  if (ids.length === 3) {
+    const [a, b, c] = ids.map((id) => frame.atoms[id]);
+    if (!a || !b || !c) return `Pick atoms to measure.${suffix}`;
+    const angle = angleDegrees(a, b, c);
+    return `Angle: ${ids[0]}-${ids[1]}-${ids[2]} = ${angle.toFixed(2)} deg. Pick a 4th atom for dihedral${suffix}`;
+  }
+
+  const [a, b, c, d] = ids.map((id) => frame.atoms[id]);
+  if (!a || !b || !c || !d) return `Pick atoms to measure.${suffix}`;
+  const dih = dihedralDegrees(a, b, c, d);
+  return `Dihedral: ${ids[0]}-${ids[1]}-${ids[2]}-${ids[3]} = ${dih.toFixed(2)} deg. Pick another atom to start next measurement${suffix}`;
+}
+
+function addSelectionOverlay(frame) {
+  if (state.selectedAtomFrame !== state.currentIndex) return;
+  const ids = state.selectedAtomIndices;
+  const atoms = ids.map((id) => frame.atoms[id]);
+  if (!atoms.length || atoms.some((a) => !a)) return;
+
+  const tags = ["A", "B", "C", "D"];
+  for (let i = 0; i < atoms.length; i += 1) {
+    const atom = atoms[i];
+    state.viewer.addSphere({
+      center: { x: atom.x, y: atom.y, z: atom.z },
+      radius: 0.34,
+      color: "#f97316",
+      opacity: 0.7,
+    });
+    state.viewer.addLabel(`${tags[i]}${ids[i]}`, {
+      position: { x: atom.x, y: atom.y, z: atom.z },
+      fontColor: "#7c2d12",
+      backgroundColor: "#ffedd5",
+      backgroundOpacity: 0.88,
+      borderThickness: 0,
+      fontSize: 12,
+      inFront: true,
+    });
+  }
+
+  for (let i = 0; i < atoms.length - 1; i += 1) {
+    const a = atoms[i];
+    const b = atoms[i + 1];
+    state.viewer.addLine({
+      start: { x: a.x, y: a.y, z: a.z },
+      end: { x: b.x, y: b.y, z: b.z },
+      dashed: true,
+      color: "#f97316",
+      linewidth: 2,
+    });
+  }
+
+  if (atoms.length === 2) {
+    const [a, b] = atoms;
+    state.viewer.addLabel(`${distance(a, b).toFixed(3)} Å`, {
+      position: midpoint(a, b),
+      fontColor: "#111827",
+      backgroundColor: "#fff7d1",
+      backgroundOpacity: 0.8,
+      borderThickness: 0,
+      fontSize: 13,
+      inFront: true,
+    });
+  }
+
+  if (atoms.length === 3) {
+    const [a, b, c] = atoms;
+    state.viewer.addLabel(`${angleDegrees(a, b, c).toFixed(2)} deg`, {
+      position: centroid3(a, b, c),
+      fontColor: "#111827",
+      backgroundColor: "#e0f2fe",
+      backgroundOpacity: 0.84,
+      borderThickness: 0,
+      fontSize: 13,
+      inFront: true,
+    });
+  }
+
+  if (atoms.length >= 4) {
+    const [a, b, c, d] = atoms;
+    state.viewer.addLabel(`${dihedralDegrees(a, b, c, d).toFixed(2)} deg`, {
+      position: midpoint(b, c),
+      fontColor: "#111827",
+      backgroundColor: "#ede9fe",
+      backgroundOpacity: 0.84,
+      borderThickness: 0,
+      fontSize: 13,
+      inFront: true,
+    });
+  }
+}
+
+function midpoint(a, b) {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+    z: (a.z + b.z) / 2,
+  };
+}
+
+function centroid3(a, b, c) {
+  return {
+    x: (a.x + b.x + c.x) / 3,
+    y: (a.y + b.y + c.y) / 3,
+    z: (a.z + b.z + c.z) / 3,
+  };
+}
+
+function angleDegrees(a, b, c) {
+  const ba = { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+  const bc = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
+  const baNorm = norm(ba);
+  const bcNorm = norm(bc);
+  if (baNorm < 1e-12 || bcNorm < 1e-12) return 0;
+  const cosTheta = clamp(dot(ba, bc) / (baNorm * bcNorm), -1, 1);
+  return (Math.acos(cosTheta) * 180) / Math.PI;
+}
+
+function dihedralDegrees(a, b, c, d) {
+  const b1 = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+  const b2 = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
+  const b3 = { x: d.x - c.x, y: d.y - c.y, z: d.z - c.z };
+  const n1 = cross(b1, b2);
+  const n2 = cross(b2, b3);
+  const b2norm = norm(b2);
+  const n1norm = norm(n1);
+  const n2norm = norm(n2);
+  if (b2norm < 1e-12 || n1norm < 1e-12 || n2norm < 1e-12) return 0;
+
+  const b2unit = scale(b2, 1 / b2norm);
+  const m1 = cross(n1, b2unit);
+  const x = dot(n1, n2);
+  const y = dot(m1, n2);
+  return (Math.atan2(y, x) * 180) / Math.PI;
+}
+
+function dot(u, v) {
+  return u.x * v.x + u.y * v.y + u.z * v.z;
+}
+
+function cross(u, v) {
+  return {
+    x: u.y * v.z - u.z * v.y,
+    y: u.z * v.x - u.x * v.z,
+    z: u.x * v.y - u.y * v.x,
+  };
+}
+
+function norm(v) {
+  return Math.hypot(v.x, v.y, v.z);
+}
+
+function scale(v, factor) {
+  return { x: v.x * factor, y: v.y * factor, z: v.z * factor };
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function clearViewer() {
