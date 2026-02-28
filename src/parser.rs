@@ -10,6 +10,7 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
     let mut pending_energy: Option<f64> = None;
     let final_converged = parse_final_convergence(content);
     let lines: Vec<&str> = content.lines().collect();
+    let orca_version = parse_orca_version(&lines);
     let coord_blocks = parse_cartesian_blocks(&lines);
     let freq_blocks = parse_frequency_blocks(&lines);
     let normal_blocks = parse_normal_mode_blocks(&lines);
@@ -73,6 +74,7 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
 
     ParseResult {
         source: source.to_string(),
+        orca_version,
         frames,
         final_converged,
         charge,
@@ -133,6 +135,42 @@ fn parse_final_convergence(content: &str) -> Option<bool> {
     final_converged
 }
 
+fn parse_orca_version(lines: &[&str]) -> Option<String> {
+    for line in lines {
+        let mut tokens = line.split_whitespace();
+        let Some(first) = tokens.next() else {
+            continue;
+        };
+        let Some(second) = tokens.next() else {
+            continue;
+        };
+        if first.eq_ignore_ascii_case("Program") && second.eq_ignore_ascii_case("Version") {
+            if let Some(raw_version) = tokens.next() {
+                if let Some(version) = normalize_version_token(raw_version) {
+                    return Some(version);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn normalize_version_token(token: &str) -> Option<String> {
+    let cleaned = token.trim_matches(|c: char| !(c.is_ascii_digit() || c == '.'));
+    if cleaned.is_empty() || !cleaned.contains('.') {
+        return None;
+    }
+    if cleaned
+        .split('.')
+        .any(|segment| segment.is_empty() || !segment.chars().all(|c| c.is_ascii_digit()))
+    {
+        return None;
+    }
+
+    Some(cleaned.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_orca_out;
@@ -170,8 +208,18 @@ FINAL SINGLE POINT ENERGY     -10.6000
         let result = parse_orca_out("test.out", content);
         assert!(result.frames.is_empty());
         assert_eq!(result.final_converged, None);
+        assert_eq!(result.orca_version, None);
         assert!(!result.frequency.has_frequency);
         assert!(result.frequency.thermochemistry.is_none());
+    }
+
+    #[test]
+    fn parse_orca_version() {
+        let content = r#"
+Program Version 6.1.1  -  RELEASE   -
+"#;
+        let result = parse_orca_out("test.out", content);
+        assert_eq!(result.orca_version.as_deref(), Some("6.1.1"));
     }
 
     #[test]

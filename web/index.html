@@ -13,7 +13,10 @@
   <body>
     <main class="container">
       <h1>ORCA Trajectory Viewer</h1>
-      <section id="status" class="status">Loading parsed ORCA data...</section>
+      <section class="status">
+        <span id="statusText">Loading parsed ORCA data...</span>
+        <span id="statusOrcaVersion" class="status-version hidden"></span>
+      </section>
 
       <section class="energy">
         <div>Energy (Hartree): <strong id="energyValue">N/A</strong></div>
@@ -28,15 +31,15 @@
         <div id="thermoPanel" class="thermo-panel hidden">
           <div class="thermo-title">Thermochemistry</div>
           <div class="thermo-row">
-            <span class="thermo-key">Electronic energy</span>
+            <span class="thermo-key">Electronic energy (Eh)</span>
             <strong id="thermoElectronicEnergy">N/A</strong>
           </div>
           <div class="thermo-row">
-            <span class="thermo-key">Final Gibbs free energy</span>
+            <span class="thermo-key">Final Gibbs free energy (Eh)</span>
             <strong id="thermoGibbsFreeEnergy">N/A</strong>
           </div>
           <div class="thermo-row">
-            <span class="thermo-key">G-E(el)</span>
+            <span class="thermo-key">G-E(el) (Eh)</span>
             <strong id="thermoGibbsCorrection">N/A</strong>
           </div>
         </div>

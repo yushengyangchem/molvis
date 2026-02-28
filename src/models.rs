@@ -18,6 +18,7 @@ pub struct Frame {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParseResult {
     pub source: String,
+    pub orca_version: Option<String>,
     pub frames: Vec<Frame>,
     pub final_converged: Option<bool>,
     pub charge: Option<i32>,

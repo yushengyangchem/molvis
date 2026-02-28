@@ -31,6 +31,7 @@ import { drawEnergyTrendChart } from "./modules/trendChart.js";
 const state = {
   frames: [],
   source: "",
+  orcaVersion: null,
   finalConverged: null,
   frequency: null,
   viewer: null,
@@ -61,7 +62,8 @@ const state = {
   },
 };
 
-const statusEl = document.getElementById("status");
+const statusTextEl = document.getElementById("statusText");
+const statusOrcaVersionEl = document.getElementById("statusOrcaVersion");
 const slider = document.getElementById("frameSlider");
 const frameInfo = document.getElementById("frameInfo");
 const energyValue = document.getElementById("energyValue");
@@ -182,6 +184,7 @@ function bindEvents() {
 function loadFrames(
   frames,
   source,
+  orcaVersionValue = null,
   finalConverged = null,
   charge = null,
   multiplicity = null,
@@ -194,6 +197,8 @@ function loadFrames(
 ) {
   state.frames = frames || [];
   state.source = source || "orca";
+  state.orcaVersion = orcaVersionValue;
+  updateStatusOrcaVersion();
   state.finalConverged = finalConverged;
   state.charge = charge;
   state.multiplicity = multiplicity;
@@ -380,7 +385,20 @@ function setStatus(text) {
     text.startsWith("No frames were parsed") ||
     text.startsWith("Failed to load data");
   if (!allowed) return;
-  statusEl.textContent = text;
+  if (statusTextEl) {
+    statusTextEl.textContent = text;
+  }
+}
+
+function updateStatusOrcaVersion() {
+  if (!statusOrcaVersionEl) return;
+  if (state.orcaVersion) {
+    statusOrcaVersionEl.textContent = `ORCA ${state.orcaVersion}`;
+    statusOrcaVersionEl.classList.remove("hidden");
+    return;
+  }
+  statusOrcaVersionEl.textContent = "";
+  statusOrcaVersionEl.classList.add("hidden");
 }
 
 function getExportElements() {
@@ -489,6 +507,7 @@ async function loadData() {
     loadFrames(
       data.frames,
       data.source,
+      data.orca_version ?? null,
       data.final_converged ?? null,
       data.charge ?? null,
       data.multiplicity ?? null,

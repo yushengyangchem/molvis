@@ -26,6 +26,26 @@ h1 {
 
 .status {
   color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.status-version {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f3b73;
+  background: #e8efff;
+  border: 1px solid #c9d8f5;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.status-version.hidden {
+  display: none;
 }
 
 .controls label,
