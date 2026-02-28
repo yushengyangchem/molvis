@@ -1,9 +1,8 @@
 export function formatHartree(value, thermoDecimals) {
   if (!Number.isFinite(value)) return "N/A";
-  const trimmed = Number(value)
+  return Number(value)
     .toFixed(thermoDecimals)
     .replace(/\.?0+$/, "");
-  return `${trimmed} Eh`;
 }
 
 export function renderThermochemistryPanel(report, elements, thermoDecimals) {
