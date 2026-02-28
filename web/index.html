@@ -19,7 +19,10 @@
       </section>
 
       <section class="energy">
-        <div>Energy (Hartree): <strong id="energyValue">N/A</strong></div>
+        <div>
+          <span class="energy-label">Energy (Hartree): </span>
+          <strong id="energyValue">N/A</strong>
+        </div>
         <span id="finalConvergenceBadge" class="convergence-badge unknown">
           Unknown
         </span>
@@ -35,12 +38,12 @@
             <strong id="thermoElectronicEnergy">N/A</strong>
           </div>
           <div class="thermo-row">
-            <span class="thermo-key">Final Gibbs free energy (Eh)</span>
-            <strong id="thermoGibbsFreeEnergy">N/A</strong>
-          </div>
-          <div class="thermo-row">
             <span class="thermo-key">G-E(el) (Eh)</span>
             <strong id="thermoGibbsCorrection">N/A</strong>
+          </div>
+          <div class="thermo-row">
+            <span class="thermo-key">Final Gibbs free energy (Eh)</span>
+            <strong id="thermoGibbsFreeEnergy">N/A</strong>
           </div>
         </div>
       </section>

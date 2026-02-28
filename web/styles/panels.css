@@ -31,6 +31,14 @@
   flex-wrap: wrap;
 }
 
+.energy-label {
+  user-select: none;
+}
+
+#energyValue {
+  user-select: text;
+}
+
 .frequency {
   display: flex;
   flex-direction: column;
@@ -143,6 +151,7 @@
   border-radius: 10px;
   background: linear-gradient(180deg, #f9fbff, #f3f7ff);
   padding: 10px 12px;
+  user-select: none;
 }
 
 .thermo-panel.hidden {
@@ -153,6 +162,7 @@
   font-weight: 700;
   color: #1f2f4a;
   margin-bottom: 8px;
+  user-select: none;
 }
 
 .thermo-row {
@@ -166,6 +176,11 @@
 .thermo-key {
   color: #415169;
   font-size: 13px;
+  user-select: none;
+}
+
+.thermo-row strong {
+  user-select: text;
 }
 
 .convergence-badge {
