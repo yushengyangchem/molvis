@@ -166,6 +166,31 @@ fn styles_for_theme(theme: CliTheme) -> Styles {
     }
 }
 
+fn parse_theme_arg_from_raw_args() -> CliThemeArg {
+    let mut args = env::args_os().skip(1);
+    while let Some(arg) = args.next() {
+        let s = arg.to_string_lossy();
+        if let Some(v) = s.strip_prefix("--term-theme=") {
+            return match v {
+                "dark" => CliThemeArg::Dark,
+                "light" => CliThemeArg::Light,
+                _ => CliThemeArg::Auto,
+            };
+        }
+        if s == "--term-theme" {
+            if let Some(next) = args.next() {
+                return match next.to_string_lossy().as_ref() {
+                    "dark" => CliThemeArg::Dark,
+                    "light" => CliThemeArg::Light,
+                    _ => CliThemeArg::Auto,
+                };
+            }
+            return CliThemeArg::Auto;
+        }
+    }
+    CliThemeArg::Auto
+}
+
 #[tokio::main]
 async fn main() {
     let cli = parse_cli_args();
@@ -365,8 +390,7 @@ mod tests {
 }
 
 fn parse_cli_args() -> CliConfig {
-    let initial = CliArgs::parse();
-    let theme = resolve_cli_theme(initial.term_theme);
+    let theme = resolve_cli_theme(parse_theme_arg_from_raw_args());
     let cmd = CliArgs::command().styles(styles_for_theme(theme));
     let matches = cmd.get_matches();
     let args = CliArgs::from_arg_matches(&matches).unwrap_or_else(|err| err.exit());
