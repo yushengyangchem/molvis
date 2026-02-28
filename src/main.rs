@@ -10,9 +10,10 @@ use axum::{
     Router,
 };
 use clap::builder::styling::{AnsiColor, Effects, Styles};
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches, Parser, ValueEnum};
 use serde_json::to_vec;
 use std::{
+    env,
     net::{IpAddr, SocketAddr},
     process,
     sync::Arc,
@@ -49,13 +50,19 @@ struct CliConfig {
     port: u16,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum CliThemeArg {
+    Auto,
+    Dark,
+    Light,
+}
+
 #[derive(Debug, Parser)]
 #[command(
     name = "molvis",
     version,
     about = "Molecular trajectory viewer (currently ORCA .out)",
     long_about = "CLI web viewer for molecular trajectories with 3Dmol.js rendering. Current parser support: ORCA .out.",
-    styles = cli_styles(),
     arg_required_else_help = true,
     next_line_help = true,
     help_template = "\
@@ -88,9 +95,22 @@ struct CliArgs {
         help = "Bind port"
     )]
     port: u16,
+    #[arg(
+        long = "term-theme",
+        value_enum,
+        default_value_t = CliThemeArg::Auto,
+        help = "CLI help color theme: auto | dark | light"
+    )]
+    term_theme: CliThemeArg,
 }
 
-fn cli_styles() -> Styles {
+#[derive(Debug, Clone, Copy)]
+enum CliTheme {
+    Dark,
+    Light,
+}
+
+fn cli_styles_dark() -> Styles {
     Styles::styled()
         .header(AnsiColor::Cyan.on_default() | Effects::BOLD)
         .usage(AnsiColor::Cyan.on_default() | Effects::BOLD)
@@ -99,6 +119,51 @@ fn cli_styles() -> Styles {
         .valid(AnsiColor::Green.on_default())
         .invalid(AnsiColor::Red.on_default() | Effects::BOLD)
         .error(AnsiColor::Red.on_default() | Effects::BOLD)
+}
+
+fn cli_styles_light() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::Blue.on_default() | Effects::BOLD)
+        .usage(AnsiColor::Blue.on_default() | Effects::BOLD)
+        .literal(AnsiColor::Magenta.on_default() | Effects::BOLD)
+        .placeholder(AnsiColor::Blue.on_default())
+        .valid(AnsiColor::Green.on_default() | Effects::BOLD)
+        .invalid(AnsiColor::Red.on_default() | Effects::BOLD)
+        .error(AnsiColor::Red.on_default() | Effects::BOLD)
+}
+
+fn detect_terminal_theme() -> CliTheme {
+    // Typical format: "<fg>;<bg>" or "<fg>;<bg>;<...>".
+    if let Ok(v) = env::var("COLORFGBG") {
+        if let Some(bg) = v
+            .split(';')
+            .filter_map(|token| token.parse::<u8>().ok())
+            .next_back()
+        {
+            if (7..=15).contains(&bg) {
+                return CliTheme::Light;
+            }
+            if bg <= 6 {
+                return CliTheme::Dark;
+            }
+        }
+    }
+    CliTheme::Dark
+}
+
+fn resolve_cli_theme(theme_arg: CliThemeArg) -> CliTheme {
+    match theme_arg {
+        CliThemeArg::Auto => detect_terminal_theme(),
+        CliThemeArg::Dark => CliTheme::Dark,
+        CliThemeArg::Light => CliTheme::Light,
+    }
+}
+
+fn styles_for_theme(theme: CliTheme) -> Styles {
+    match theme {
+        CliTheme::Dark => cli_styles_dark(),
+        CliTheme::Light => cli_styles_light(),
+    }
 }
 
 #[tokio::main]
@@ -300,7 +365,11 @@ mod tests {
 }
 
 fn parse_cli_args() -> CliConfig {
-    let args = CliArgs::parse();
+    let initial = CliArgs::parse();
+    let theme = resolve_cli_theme(initial.term_theme);
+    let cmd = CliArgs::command().styles(styles_for_theme(theme));
+    let matches = cmd.get_matches();
+    let args = CliArgs::from_arg_matches(&matches).unwrap_or_else(|err| err.exit());
     CliConfig {
         out_path: args.out_path,
         host: args.host,
