@@ -53,7 +53,18 @@
 
       <section id="vibrationPanel" class="vibration-panel hidden">
         <div class="vibration-head">
-          <strong id="vibrationTitle">Imaginary Frequency Animation</strong>
+          <strong id="vibrationTitle">Vibration Analysis</strong>
+          <div class="vibration-actions">
+            <button id="vibrationPlayBtn" class="toggle-btn" type="button">
+              Start Vibration
+            </button>
+            <button id="vibrationPauseBtn" class="toggle-btn" type="button">
+              Pause
+            </button>
+            <button id="vibrationCloseBtn" class="toggle-btn" type="button">
+              Close
+            </button>
+          </div>
         </div>
         <div class="vibration-controls">
           <label for="vibrationSlider">Vibration Frame</label>
@@ -76,6 +87,38 @@
             value="21"
           />
         </div>
+        <div class="vibration-export-actions">
+          <button
+            id="vibrationExportXyzBtn"
+            class="toggle-btn"
+            type="button"
+            disabled
+          >
+            Show XYZ Text
+          </button>
+          <button
+            id="vibrationExportGjfBtn"
+            class="toggle-btn"
+            type="button"
+            disabled
+          >
+            Show GJF Text
+          </button>
+        </div>
+        <section id="vibrationTextPanel" class="xyz-panel hidden">
+          <div class="xyz-panel-head">
+            <strong id="vibrationTextTitle">Vibration Frame XYZ</strong>
+            <button id="vibrationCopyBtn" class="toggle-btn" type="button">
+              Copy
+            </button>
+          </div>
+          <textarea
+            id="vibrationTextOutput"
+            class="xyz-text"
+            readonly
+            spellcheck="false"
+          ></textarea>
+        </section>
       </section>
 
       <section class="viewer-wrap">

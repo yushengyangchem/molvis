@@ -42,12 +42,12 @@ export function renderFrequencyPanel(
     playBtn.type = "button";
     playBtn.className = "toggle-btn";
     const active = isSameMode(activeMode, mode);
-    playBtn.textContent = active ? "Stop" : "Animate";
+    playBtn.textContent = active ? "Close Analysis" : "Vibration Analysis";
     playBtn.addEventListener("click", () => {
       if (isSameMode(activeMode, mode)) {
-        handlers.stop();
+        handlers.close();
       } else {
-        handlers.start(mode);
+        handlers.open(mode);
       }
     });
     card.appendChild(playBtn);

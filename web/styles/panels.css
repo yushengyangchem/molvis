@@ -139,6 +139,35 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.vibration-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.vibration-actions .toggle-btn {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #e7eefc;
+  color: #1f3b73;
+  border: 1px solid #c9d8f5;
+}
+
+.vibration-actions .toggle-btn:hover {
+  filter: none;
+  background: #dce8fd;
+}
+
+.vibration-actions .toggle-btn:disabled {
+  cursor: not-allowed;
+  color: #98a2b3;
+  border-color: #e4e7ec;
+  background: #f6f7f9;
 }
 
 .vibration-controls {
@@ -159,6 +188,34 @@
   border: 1px solid #c9d8f5;
   border-radius: 8px;
   background: #f9fbff;
+}
+
+.vibration-export-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.vibration-export-actions .toggle-btn {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #eef2fb;
+  color: #31415d;
+  border: 1px solid #d4dced;
+}
+
+.vibration-export-actions .toggle-btn:hover {
+  filter: none;
+  background: #e6ecfa;
+}
+
+.vibration-export-actions .toggle-btn:disabled {
+  cursor: not-allowed;
+  color: #98a2b3;
+  border-color: #e4e7ec;
+  background: #f6f7f9;
 }
 
 .vibration-panel.hidden {

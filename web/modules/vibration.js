@@ -68,7 +68,18 @@ function resampleTrajectory(frames, targetCount) {
   return out.length ? out : frames;
 }
 
-export function startVibrationPlayback(state, mode, deps) {
+function updatePlaybackControls(state, deps) {
+  const active = Boolean(state.vibration.activeMode);
+  const playing = Boolean(state.vibration.timer);
+  if (deps.vibrationPlayBtn) {
+    deps.vibrationPlayBtn.disabled = !active || playing;
+  }
+  if (deps.vibrationPauseBtn) {
+    deps.vibrationPauseBtn.disabled = !active || !playing;
+  }
+}
+
+export function openVibrationAnalysis(state, mode, deps) {
   if (!state.viewer) return;
   const parsed = parseXyzTrajectory(mode?.xyz_trajectory || "");
   if (!parsed.length) {
@@ -87,34 +98,32 @@ export function startVibrationPlayback(state, mode, deps) {
   }
   const frames = resampleTrajectory(parsed, targetCount);
 
-  stopVibrationPlayback(state, deps, { silent: true });
+  closeVibrationAnalysis(state, deps, { silent: true });
   deps.clearAtomSelection();
   state.vibration.activeMode = mode;
   state.vibration.parsedFrames = frames;
   state.vibration.currentFrame = 0;
+  state.vibration.timer = null;
   if (deps.clearMeasureBtn) {
     deps.clearMeasureBtn.classList.add("hidden");
   }
 
   if (deps.vibrationPanel) deps.vibrationPanel.classList.remove("hidden");
   if (deps.vibrationTitle) {
-    deps.vibrationTitle.textContent = `Imaginary Frequency (${Number(mode.frequency_cm1).toFixed(2)} cm^-1)`;
+    deps.vibrationTitle.textContent = `Vibration Analysis (${Number(mode.frequency_cm1).toFixed(2)} cm^-1)`;
   }
   if (deps.vibrationSlider) {
     deps.vibrationSlider.max = String(Math.max(0, frames.length - 1));
     deps.vibrationSlider.value = "0";
   }
   renderVibrationFrame(state, 0, deps);
-
-  state.vibration.timer = window.setInterval(() => {
-    if (!state.vibration.activeMode) return;
-    const next =
-      (state.vibration.currentFrame + 1) % state.vibration.parsedFrames.length;
-    renderVibrationFrame(state, next, deps);
-    if (deps.vibrationSlider) {
-      deps.vibrationSlider.value = String(next);
-    }
-  }, state.vibration.intervalMs);
+  if (deps.updateTextPanelLabel) {
+    deps.updateTextPanelLabel();
+  }
+  if (deps.updateExportAvailability) {
+    deps.updateExportAvailability();
+  }
+  updatePlaybackControls(state, deps);
   deps.renderFrequencyPanel();
 }
 
@@ -143,9 +152,37 @@ export function renderVibrationFrame(state, index, deps) {
   if (deps.vibrationFrameInfo) {
     deps.vibrationFrameInfo.textContent = `${index + 1} / ${frames.length}`;
   }
+  if (deps.syncVisibleText) {
+    deps.syncVisibleText();
+  }
 }
 
-export function stopVibrationPlayback(state, deps, { silent = false } = {}) {
+export function startVibrationPlayback(state, deps) {
+  if (!state.vibration.activeMode) return;
+  if (!state.vibration.parsedFrames.length) return;
+  if (state.vibration.timer) return;
+  state.vibration.timer = window.setInterval(() => {
+    if (!state.vibration.activeMode) return;
+    const next =
+      (state.vibration.currentFrame + 1) % state.vibration.parsedFrames.length;
+    renderVibrationFrame(state, next, deps);
+    if (deps.vibrationSlider) {
+      deps.vibrationSlider.value = String(next);
+    }
+  }, state.vibration.intervalMs);
+  updatePlaybackControls(state, deps);
+}
+
+export function pauseVibrationPlayback(state, deps) {
+  if (state.vibration.timer) {
+    window.clearInterval(state.vibration.timer);
+    state.vibration.timer = null;
+  }
+  updatePlaybackControls(state, deps);
+}
+
+export function closeVibrationAnalysis(state, deps, { silent = false } = {}) {
+  const wasPlaying = Boolean(state.vibration.timer);
   if (state.vibration.timer) {
     window.clearInterval(state.vibration.timer);
     state.vibration.timer = null;
@@ -169,10 +206,19 @@ export function stopVibrationPlayback(state, deps, { silent = false } = {}) {
   if (deps.clearMeasureBtn) {
     deps.clearMeasureBtn.classList.remove("hidden");
   }
+  if (deps.updateTextPanelLabel) {
+    deps.updateTextPanelLabel();
+  }
+  if (deps.updateExportAvailability) {
+    deps.updateExportAvailability();
+  }
+  updatePlaybackControls(state, deps);
   if (hadActive) {
     deps.renderFrequencyPanel();
   }
   if (!silent) {
-    // Keep API shape for future status updates; currently intentionally silent.
+    if (wasPlaying) {
+      deps.setStatus("Vibration playback stopped.");
+    }
   }
 }

@@ -1,6 +1,8 @@
 import { cpkColors } from "./cpkColors.js";
 import { toMolWithInferredBondOrders } from "./modules/molBuilder.js";
 import {
+  formatFrameAsGjf,
+  formatFrameAsXyz,
   copyCurrentText,
   syncVisibleText,
   toggleCurrentFrameText,
@@ -21,10 +23,12 @@ import {
   updateAtomIndexToggle as updateAtomIndexToggleView,
 } from "./modules/viewerFrame.js";
 import {
+  openVibrationAnalysis as openVibrationAnalysisView,
   renderVibrationFrame as renderVibrationFrameView,
   sanitizeFrameCount,
   startVibrationPlayback as startVibrationPlaybackView,
-  stopVibrationPlayback as stopVibrationPlaybackView,
+  pauseVibrationPlayback as pauseVibrationPlaybackView,
+  closeVibrationAnalysis as closeVibrationAnalysisView,
 } from "./modules/vibration.js";
 import { drawEnergyTrendChart } from "./modules/trendChart.js";
 
@@ -52,6 +56,7 @@ const state = {
   charge: null,
   multiplicity: null,
   textExportMode: "xyz",
+  vibrationTextExportMode: "xyz",
   vibration: {
     modes: [],
     activeMode: null,
@@ -88,6 +93,15 @@ const vibrationTitle = document.getElementById("vibrationTitle");
 const vibrationSlider = document.getElementById("vibrationSlider");
 const vibrationFrameInfo = document.getElementById("vibrationFrameInfo");
 const vibrationFrameCountInput = document.getElementById("vibrationFrameCount");
+const vibrationPlayBtn = document.getElementById("vibrationPlayBtn");
+const vibrationPauseBtn = document.getElementById("vibrationPauseBtn");
+const vibrationCloseBtn = document.getElementById("vibrationCloseBtn");
+const vibrationExportXyzBtn = document.getElementById("vibrationExportXyzBtn");
+const vibrationExportGjfBtn = document.getElementById("vibrationExportGjfBtn");
+const vibrationTextPanel = document.getElementById("vibrationTextPanel");
+const vibrationTextTitle = document.getElementById("vibrationTextTitle");
+const vibrationTextOutput = document.getElementById("vibrationTextOutput");
+const vibrationCopyBtn = document.getElementById("vibrationCopyBtn");
 const thermoPanel = document.getElementById("thermoPanel");
 const thermoElectronicEnergy = document.getElementById(
   "thermoElectronicEnergy",
@@ -157,8 +171,26 @@ function bindEvents() {
     state.vibration.frameCount = next;
     vibrationFrameCountInput.value = String(next);
     if (state.vibration.activeMode) {
-      startVibrationPlayback(state.vibration.activeMode);
+      openVibrationAnalysis(state.vibration.activeMode);
     }
+  });
+  vibrationPlayBtn?.addEventListener("click", () => {
+    startVibrationPlayback();
+  });
+  vibrationPauseBtn?.addEventListener("click", () => {
+    pauseVibrationPlayback();
+  });
+  vibrationCloseBtn?.addEventListener("click", () => {
+    closeVibrationAnalysis();
+  });
+  vibrationExportXyzBtn?.addEventListener("click", () => {
+    toggleVibrationFrameText("xyz");
+  });
+  vibrationExportGjfBtn?.addEventListener("click", () => {
+    toggleVibrationFrameText("gjf");
+  });
+  vibrationCopyBtn?.addEventListener("click", async () => {
+    await copyVibrationText();
   });
 
   window.addEventListener("resize", () => {
@@ -178,6 +210,10 @@ function bindEvents() {
   }
 
   window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.vibration.activeMode) {
+      closeVibrationAnalysis();
+      return;
+    }
     if (event.key !== "Escape") return;
     if (!state.selectedAtomIndices.length) return;
     clearSelectionAndRefresh("Measurement selection cleared.");
@@ -210,6 +246,7 @@ function loadFrames(
   state.multiplicity = multiplicity;
   state.frequency = frequency;
   state.textExportMode = "xyz";
+  state.vibrationTextExportMode = "xyz";
   state.currentIndex = 0;
   state.hasAutoZoomed = false;
   state.pendingFrameIndex = null;
@@ -219,7 +256,7 @@ function loadFrames(
     state.labelRenderTimer = null;
   }
   clearAtomSelection();
-  stopVibrationPlayback({ silent: true });
+  closeVibrationAnalysis({ silent: true });
   state.vibration.modes = state.frequency?.imaginary_modes || [];
   state.inferredMolCache.clear();
   slider.max = Math.max(0, state.frames.length - 1);
@@ -261,7 +298,7 @@ function renderFrame(index, { showLabels = state.showAtomIndices } = {}) {
 
 function scheduleRenderFrame(index) {
   if (state.vibration.activeMode) {
-    stopVibrationPlayback({ silent: true });
+    closeVibrationAnalysis({ silent: true });
   }
   state.pendingFrameIndex = index;
   if (state.scheduledFrameRender) return;
@@ -404,8 +441,8 @@ function renderFrequencyPanel() {
     freqStatus.classList.add(view.className);
   }
   renderFrequencyPanelView(report, state.vibration.activeMode, imagModeList, {
-    start: (mode) => startVibrationPlayback(mode),
-    stop: () => stopVibrationPlayback(),
+    open: (mode) => openVibrationAnalysis(mode),
+    close: () => closeVibrationAnalysis(),
   });
 }
 
@@ -477,6 +514,12 @@ function getVibrationDeps() {
     renderFrame,
     renderFrequencyPanel,
     setStatus,
+    syncVisibleText: () => syncVisibleVibrationText(),
+    updateTextPanelLabel: () => updateVibrationTextToggleLabel(),
+    updateExportAvailability: () => updateVibrationExportAvailability(),
+    vibrationPlayBtn,
+    vibrationPauseBtn,
+    vibrationCloseBtn,
   };
 }
 
@@ -512,16 +555,157 @@ async function copyXyzText() {
   await copyCurrentText(state, getExportElements(), setStatus);
 }
 
-function startVibrationPlayback(mode) {
-  startVibrationPlaybackView(state, mode, getVibrationDeps());
+function hasVibrationFrame() {
+  return Boolean(
+    state.vibration.activeMode && state.vibration.parsedFrames.length,
+  );
+}
+
+function updateVibrationExportAvailability() {
+  const enabled = hasVibrationFrame();
+  if (vibrationExportXyzBtn) {
+    vibrationExportXyzBtn.disabled = !enabled;
+  }
+  if (vibrationExportGjfBtn) {
+    vibrationExportGjfBtn.disabled = !enabled;
+  }
+  if (!enabled) {
+    state.vibrationTextExportMode = "xyz";
+    if (vibrationTextPanel) {
+      vibrationTextPanel.classList.add("hidden");
+    }
+    if (vibrationTextOutput) {
+      vibrationTextOutput.value = "";
+    }
+  }
+  updateVibrationTextToggleLabel();
+}
+
+function updateVibrationTextToggleLabel() {
+  if (!vibrationExportXyzBtn || !vibrationExportGjfBtn || !vibrationTextPanel) {
+    return;
+  }
+  const shown = !vibrationTextPanel.classList.contains("hidden");
+  const xyzActive = shown && state.vibrationTextExportMode === "xyz";
+  const gjfActive = shown && state.vibrationTextExportMode === "gjf";
+  vibrationExportXyzBtn.textContent = xyzActive
+    ? "Hide XYZ Text"
+    : "Show XYZ Text";
+  vibrationExportGjfBtn.textContent = gjfActive
+    ? "Hide GJF Text"
+    : "Show GJF Text";
+  if (vibrationTextTitle) {
+    vibrationTextTitle.textContent =
+      state.vibrationTextExportMode === "gjf"
+        ? "Vibration Frame GJF"
+        : "Vibration Frame XYZ";
+  }
+}
+
+function buildVibrationFrameText() {
+  if (!hasVibrationFrame()) return "";
+  const frame = state.vibration.parsedFrames[state.vibration.currentFrame];
+  const index = state.vibration.currentFrame;
+  const total = state.vibration.parsedFrames.length;
+  const modeVal = Number(state.vibration.activeMode?.frequency_cm1);
+  const modeTag = Number.isFinite(modeVal) ? modeVal.toFixed(2) : "N/A";
+
+  if (state.vibrationTextExportMode === "gjf") {
+    const base = formatFrameAsGjf(
+      frame,
+      index,
+      total,
+      state.charge,
+      state.multiplicity,
+    );
+    return base.replace(
+      /Generated from frame [^\n]*/,
+      `Generated from vibration frame ${index + 1}/${total} (mode ${modeTag} cm^-1)`,
+    );
+  }
+
+  const base = formatFrameAsXyz(frame, index, total, ENERGY_DECIMALS);
+  return base.replace(
+    /Frame [^\n]*/,
+    `Vibration frame ${index + 1}/${total}; Mode(cm^-1)=${modeTag}`,
+  );
+}
+
+function showVibrationFrameText() {
+  if (!vibrationTextPanel || !vibrationTextOutput) return;
+  if (!hasVibrationFrame()) return;
+  vibrationTextOutput.value = buildVibrationFrameText();
+  vibrationTextPanel.classList.remove("hidden");
+  updateVibrationTextToggleLabel();
+  vibrationTextOutput.focus();
+  vibrationTextOutput.select();
+}
+
+function toggleVibrationFrameText(mode) {
+  if (!vibrationTextPanel || !vibrationTextOutput) return;
+  if (!hasVibrationFrame()) return;
+  const shown = !vibrationTextPanel.classList.contains("hidden");
+  if (shown && state.vibrationTextExportMode === mode) {
+    vibrationTextPanel.classList.add("hidden");
+    updateVibrationTextToggleLabel();
+    return;
+  }
+  state.vibrationTextExportMode = mode;
+  showVibrationFrameText();
+}
+
+function syncVisibleVibrationText() {
+  if (!vibrationTextPanel || !vibrationTextOutput) return;
+  if (vibrationTextPanel.classList.contains("hidden")) return;
+  vibrationTextOutput.value = buildVibrationFrameText();
+}
+
+async function copySelectedTextArea(textarea) {
+  const text = textarea?.value || "";
+  if (!text || !textarea) return;
+  const selectText = () => {
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+  };
+  try {
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // fallback below
+  }
+  try {
+    selectText();
+    document.execCommand("copy");
+  } catch {
+    selectText();
+  }
+}
+
+async function copyVibrationText() {
+  await copySelectedTextArea(vibrationTextOutput);
+}
+
+function openVibrationAnalysis(mode) {
+  openVibrationAnalysisView(state, mode, getVibrationDeps());
+}
+
+function startVibrationPlayback() {
+  startVibrationPlaybackView(state, getVibrationDeps());
 }
 
 function renderVibrationFrame(index) {
   renderVibrationFrameView(state, index, getVibrationDeps());
 }
 
-function stopVibrationPlayback({ silent = false } = {}) {
-  stopVibrationPlaybackView(state, getVibrationDeps(), { silent });
+function pauseVibrationPlayback() {
+  pauseVibrationPlaybackView(state, getVibrationDeps());
+}
+
+function closeVibrationAnalysis({ silent = false } = {}) {
+  closeVibrationAnalysisView(state, getVibrationDeps(), { silent });
 }
 
 async function drawEnergyTrend() {
