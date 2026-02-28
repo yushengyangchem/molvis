@@ -1,9 +1,12 @@
 # molvis
 
-A minimal viewer for ORCA output (`.out`) files.
+A minimal web viewer for molecular trajectory/output text.
 
-- Rust backend reads and parses ORCA text into `energy + coordinates` JSON
+- Rust backend reads and parses output text into `energy + coordinates` JSON
 - JavaScript frontend uses `3Dmol.js` to render molecular structures and switch frames with a slider
+
+Current parser support: ORCA `.out` only.
+Future formats (for example Gaussian / XYZ batches) can be added later.
 
 ## Install
 

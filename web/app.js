@@ -63,7 +63,7 @@ const state = {
 };
 
 const statusTextEl = document.getElementById("statusText");
-const statusOrcaVersionEl = document.getElementById("statusOrcaVersion");
+const statusParserVersionEl = document.getElementById("statusParserVersion");
 const slider = document.getElementById("frameSlider");
 const frameInfo = document.getElementById("frameInfo");
 const energyValue = document.getElementById("energyValue");
@@ -196,7 +196,7 @@ function loadFrames(
   },
 ) {
   state.frames = frames || [];
-  state.source = source || "orca";
+  state.source = source || "molecule";
   state.orcaVersion = orcaVersionValue;
   updateStatusOrcaVersion();
   state.finalConverged = finalConverged;
@@ -391,14 +391,14 @@ function setStatus(text) {
 }
 
 function updateStatusOrcaVersion() {
-  if (!statusOrcaVersionEl) return;
+  if (!statusParserVersionEl) return;
   if (state.orcaVersion) {
-    statusOrcaVersionEl.textContent = `ORCA ${state.orcaVersion}`;
-    statusOrcaVersionEl.classList.remove("hidden");
+    statusParserVersionEl.textContent = `Recognized as ORCA file, version ${state.orcaVersion}`;
+    statusParserVersionEl.classList.remove("hidden");
     return;
   }
-  statusOrcaVersionEl.textContent = "";
-  statusOrcaVersionEl.classList.add("hidden");
+  statusParserVersionEl.textContent = "";
+  statusParserVersionEl.classList.add("hidden");
 }
 
 function getExportElements() {
@@ -498,7 +498,7 @@ async function loadData() {
   try {
     if (!(await initViewer())) return;
     updateAtomIndexToggle();
-    setStatus("Loading parsed ORCA data...");
+    setStatus("Loading parsed molecule data...");
     const response = await fetch("/api/data");
     if (!response.ok) {
       throw new Error(await parseApiError(response));

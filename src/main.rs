@@ -53,8 +53,8 @@ struct CliConfig {
 #[command(
     name = "molvis",
     version,
-    about = "ORCA .out viewer",
-    long_about = "CLI web viewer for ORCA .out trajectories with 3Dmol.js rendering.",
+    about = "Molecular trajectory viewer (currently ORCA .out)",
+    long_about = "CLI web viewer for molecular trajectories with 3Dmol.js rendering. Current parser support: ORCA .out.",
     styles = cli_styles(),
     arg_required_else_help = true,
     next_line_help = true,
@@ -67,7 +67,10 @@ struct CliConfig {
     after_help = "Examples:\n  molvis path/to/file.out\n  molvis -H 0.0.0.0 -p 8080 path/to/file.out"
 )]
 struct CliArgs {
-    #[arg(value_name = "PATH", help = "Path to ORCA .out file")]
+    #[arg(
+        value_name = "PATH",
+        help = "Path to molecular output file (currently ORCA .out)"
+    )]
     out_path: String,
     #[arg(
         short = 'H',
@@ -105,7 +108,7 @@ async fn main() {
     let content = match fs::read_to_string(&cli.out_path).await {
         Ok(content) => content,
         Err(err) => {
-            eprintln!("Failed to read ORCA .out file '{}': {err}", cli.out_path);
+            eprintln!("Failed to read input file '{}': {err}", cli.out_path);
             process::exit(1);
         }
     };

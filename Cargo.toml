@@ -2,7 +2,7 @@
 name = "molvis"
 version = "0.5.0"
 edition = "2021"
-description = "CLI web viewer for ORCA .out trajectories with 3Dmol.js rendering"
+description = "CLI web viewer for molecules with 3Dmol.js rendering"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/yushengyangchem/molvis"
