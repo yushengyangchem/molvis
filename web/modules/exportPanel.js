@@ -133,12 +133,32 @@ export async function copyCurrentText(state, elements, setStatus) {
     setStatus(`No ${kind} text to copy.`);
     return;
   }
-  try {
-    await navigator.clipboard.writeText(text);
-    setStatus(`${kind} text copied to clipboard.`);
-  } catch {
+  const selectText = () => {
     xyzTextOutput.focus();
     xyzTextOutput.select();
-    setStatus("Auto-copy blocked; text selected, press Ctrl+C.");
+    xyzTextOutput.setSelectionRange(0, xyzTextOutput.value.length);
+  };
+
+  try {
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      setStatus(`${kind} text copied to clipboard.`);
+      return;
+    }
+  } catch {
+    // Fallback to legacy copy below.
   }
+
+  try {
+    selectText();
+    if (document.execCommand("copy")) {
+      setStatus(`${kind} text copied to clipboard.`);
+      return;
+    }
+  } catch {
+    // Final fallback below.
+  }
+
+  selectText();
+  setStatus("Auto-copy blocked; text selected, press Ctrl+C.");
 }
