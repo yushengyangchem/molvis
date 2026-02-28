@@ -29,6 +29,33 @@ molvis /path/to/your.out
 molvis -H 0.0.0.0 -p 8080 /path/to/your.out
 ```
 
+## Server config (TOML)
+
+`molvis` can read host/port defaults from config files:
+
+- `~/.config/molvis/config.toml`
+- `/etc/molvis/config.toml`
+
+Supported keys:
+
+```toml
+host = "127.0.0.1"
+port = 3000
+```
+
+Priority is:
+
+1. CLI flags (`-H`, `-p`) - highest
+2. User config (`~/.config/molvis/config.toml`)
+3. System config (`/etc/molvis/config.toml`)
+4. Built-in defaults (`127.0.0.1:3000`)
+
+Initialize user config template:
+
+```bash
+molvis --init-config
+```
+
 ## Develop (run from source)
 
 ```bash

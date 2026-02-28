@@ -10,11 +10,13 @@ use axum::{
     Router,
 };
 use clap::builder::styling::{AnsiColor, Effects, Styles};
+use clap::parser::ValueSource;
 use clap::{CommandFactory, FromArgMatches, Parser, ValueEnum};
 use serde_json::to_vec;
 use std::{
-    env,
+    env, fs as stdfs,
     net::{IpAddr, SocketAddr},
+    path::PathBuf,
     process,
     sync::Arc,
 };
@@ -50,6 +52,18 @@ struct CliConfig {
     port: u16,
 }
 
+#[derive(Debug)]
+enum CliAction {
+    Run(CliConfig),
+    InitConfig,
+}
+
+#[derive(Debug, Default)]
+struct FileConfig {
+    host: Option<IpAddr>,
+    port: Option<u16>,
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum CliThemeArg {
     Auto,
@@ -76,9 +90,10 @@ enum CliThemeArg {
 struct CliArgs {
     #[arg(
         value_name = "PATH",
+        required_unless_present = "init_config",
         help = "Path to molecular output file (currently ORCA .out)"
     )]
-    out_path: String,
+    out_path: Option<String>,
     #[arg(
         short = 'H',
         long = "host",
@@ -102,6 +117,11 @@ struct CliArgs {
         help = "CLI help color theme: auto | dark | light"
     )]
     term_theme: CliThemeArg,
+    #[arg(
+        long = "init-config",
+        help = "Initialize ~/.config/molvis/config.toml and exit"
+    )]
+    init_config: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -193,7 +213,17 @@ fn parse_theme_arg_from_raw_args() -> CliThemeArg {
 
 #[tokio::main]
 async fn main() {
-    let cli = parse_cli_args();
+    let action = parse_cli_args();
+    if let CliAction::InitConfig = action {
+        if let Err(err) = init_user_config() {
+            eprintln!("Failed to initialize config: {err}");
+            process::exit(1);
+        }
+        return;
+    }
+    let CliAction::Run(cli) = action else {
+        process::exit(1);
+    };
 
     let content = match fs::read_to_string(&cli.out_path).await {
         Ok(content) => content,
@@ -367,7 +397,7 @@ mod tests {
     fn parse_cli_defaults() {
         let args = ["molvis", "job.out"];
         let cfg = CliArgs::try_parse_from(args).unwrap();
-        assert_eq!(cfg.out_path, "job.out");
+        assert_eq!(cfg.out_path, Some("job.out".to_string()));
         assert_eq!(cfg.port, 3000);
         assert_eq!(cfg.host, "127.0.0.1".parse::<IpAddr>().unwrap());
     }
@@ -376,9 +406,17 @@ mod tests {
     fn parse_cli_custom_host_port() {
         let args = ["molvis", "-H", "0.0.0.0", "-p", "8080", "job.out"];
         let cfg = CliArgs::try_parse_from(args).unwrap();
-        assert_eq!(cfg.out_path, "job.out");
+        assert_eq!(cfg.out_path, Some("job.out".to_string()));
         assert_eq!(cfg.port, 8080);
         assert_eq!(cfg.host, "0.0.0.0".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn parse_cli_init_config() {
+        let args = ["molvis", "--init-config"];
+        let cfg = CliArgs::try_parse_from(args).unwrap();
+        assert!(cfg.init_config);
+        assert_eq!(cfg.out_path, None);
     }
 
     #[test]
@@ -389,14 +427,127 @@ mod tests {
     }
 }
 
-fn parse_cli_args() -> CliConfig {
+fn parse_cli_args() -> CliAction {
     let theme = resolve_cli_theme(parse_theme_arg_from_raw_args());
     let cmd = CliArgs::command().styles(styles_for_theme(theme));
     let matches = cmd.get_matches();
     let args = CliArgs::from_arg_matches(&matches).unwrap_or_else(|err| err.exit());
-    CliConfig {
-        out_path: args.out_path,
-        host: args.host,
-        port: args.port,
+    if args.init_config {
+        return CliAction::InitConfig;
     }
+
+    let file_cfg = load_effective_config();
+    let host_from_cli = matches.value_source("host") == Some(ValueSource::CommandLine);
+    let port_from_cli = matches.value_source("port") == Some(ValueSource::CommandLine);
+    let host = if host_from_cli {
+        args.host
+    } else {
+        file_cfg.host.unwrap_or(args.host)
+    };
+    let port = if port_from_cli {
+        args.port
+    } else {
+        file_cfg.port.unwrap_or(args.port)
+    };
+
+    CliAction::Run(CliConfig {
+        out_path: args
+            .out_path
+            .unwrap_or_else(|| unreachable!("path is required when not using --init-config")),
+        host,
+        port,
+    })
+}
+
+fn load_effective_config() -> FileConfig {
+    let mut cfg = FileConfig::default();
+    for path in config_search_paths() {
+        if path.exists() {
+            let next = load_config_from_path(&path);
+            cfg.host = next.host.or(cfg.host);
+            cfg.port = next.port.or(cfg.port);
+        }
+    }
+    cfg
+}
+
+fn load_config_from_path(path: &PathBuf) -> FileConfig {
+    let content = match stdfs::read_to_string(path) {
+        Ok(content) => content,
+        Err(err) => {
+            eprintln!("Warning: failed to read config '{}': {err}", path.display());
+            return FileConfig::default();
+        }
+    };
+    parse_simple_toml_config(path, &content)
+}
+
+fn parse_simple_toml_config(path: &PathBuf, content: &str) -> FileConfig {
+    let mut cfg = FileConfig::default();
+    for raw_line in content.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() || line.starts_with('[') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        match key {
+            "host" => {
+                let raw = value.trim_matches('"');
+                match raw.parse::<IpAddr>() {
+                    Ok(host) => cfg.host = Some(host),
+                    Err(err) => eprintln!(
+                        "Warning: invalid host value in '{}': {} ({err})",
+                        path.display(),
+                        raw
+                    ),
+                }
+            }
+            "port" => {
+                let raw = value.trim_matches('"');
+                match raw.parse::<u16>() {
+                    Ok(port) => cfg.port = Some(port),
+                    Err(err) => eprintln!(
+                        "Warning: invalid port value in '{}': {} ({err})",
+                        path.display(),
+                        raw
+                    ),
+                }
+            }
+            _ => {}
+        }
+    }
+    cfg
+}
+
+fn config_search_paths() -> Vec<PathBuf> {
+    let mut paths = vec![PathBuf::from("/etc/molvis/config.toml")];
+    if let Some(home) = env::var_os("HOME") {
+        let user_dir = PathBuf::from(home).join(".config/molvis");
+        paths.push(user_dir.join("config.toml"));
+    }
+    paths
+}
+
+fn init_user_config() -> Result<(), String> {
+    let home = env::var_os("HOME").ok_or_else(|| "HOME is not set".to_string())?;
+    let config_dir = PathBuf::from(home).join(".config/molvis");
+    stdfs::create_dir_all(&config_dir)
+        .map_err(|err| format!("create '{}': {err}", config_dir.display()))?;
+    let config_path = config_dir.join("config.toml");
+    if config_path.exists() {
+        println!(
+            "Config already exists at {} (kept unchanged)",
+            config_path.display()
+        );
+        return Ok(());
+    }
+    let template = "host = \"127.0.0.1\"\nport = 3000\n";
+    stdfs::write(&config_path, template)
+        .map_err(|err| format!("write '{}': {err}", config_path.display()))?;
+    println!("Initialized config at {}", config_path.display());
+    Ok(())
 }
