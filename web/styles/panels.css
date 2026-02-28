@@ -37,6 +37,39 @@
   gap: 12px;
 }
 
+.freq-status-neutral {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  color: #111827;
+  font-weight: 700;
+}
+
+.freq-status-ok {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #86efac;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 700;
+}
+
+.freq-status-warn {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #fca5a5;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 700;
+}
+
 .imag-mode-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

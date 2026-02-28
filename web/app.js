@@ -355,10 +355,47 @@ function updateMeta() {
   drawEnergyTrend();
 }
 
+function getFrequencyStatusView(report) {
+  const hasFrequency = Boolean(report?.has_frequency);
+  const modeCount = Array.isArray(report?.imaginary_modes)
+    ? report.imaginary_modes.length
+    : 0;
+
+  if (!hasFrequency) {
+    return {
+      text: "No frequency calculation (single-point energy only)",
+      className: "freq-status-neutral",
+    };
+  }
+  if (modeCount >= 2) {
+    return {
+      text: `Found ${modeCount} imaginary mode(s) (warning)`,
+      className: "freq-status-warn",
+    };
+  }
+  if (modeCount === 1) {
+    return {
+      text: "Found 1 imaginary mode (transition state)",
+      className: "freq-status-ok",
+    };
+  }
+  return {
+    text: "No imaginary modes (intermediate)",
+    className: "freq-status-ok",
+  };
+}
+
 function renderFrequencyPanel() {
   const report = state.frequency || {};
   if (freqStatus) {
-    freqStatus.textContent = report.status || "No frequency calculation";
+    const view = getFrequencyStatusView(report);
+    freqStatus.textContent = view.text;
+    freqStatus.classList.remove(
+      "freq-status-neutral",
+      "freq-status-ok",
+      "freq-status-warn",
+    );
+    freqStatus.classList.add(view.className);
   }
   renderFrequencyPanelView(report, state.vibration.activeMode, imagModeList, {
     start: (mode) => startVibrationPlayback(mode),
