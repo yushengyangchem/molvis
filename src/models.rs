@@ -19,6 +19,7 @@ pub struct Frame {
 pub struct ParseResult {
     pub source: String,
     pub orca_version: Option<String>,
+    pub orca_terminated_normally: bool,
     pub frames: Vec<Frame>,
     pub final_converged: Option<bool>,
     pub charge: Option<i32>,

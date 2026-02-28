@@ -32,6 +32,7 @@ const state = {
   frames: [],
   source: "",
   orcaVersion: null,
+  orcaTerminatedNormally: false,
   finalConverged: null,
   frequency: null,
   viewer: null,
@@ -64,6 +65,8 @@ const state = {
 
 const statusTextEl = document.getElementById("statusText");
 const statusParserVersionEl = document.getElementById("statusParserVersion");
+const orcaTerminationBox = document.getElementById("orcaTerminationBox");
+const orcaTerminationText = document.getElementById("orcaTerminationText");
 const slider = document.getElementById("frameSlider");
 const frameInfo = document.getElementById("frameInfo");
 const energyValue = document.getElementById("energyValue");
@@ -185,6 +188,7 @@ function loadFrames(
   frames,
   source,
   orcaVersionValue = null,
+  orcaTerminatedNormally = false,
   finalConverged = null,
   charge = null,
   multiplicity = null,
@@ -198,7 +202,9 @@ function loadFrames(
   state.frames = frames || [];
   state.source = source || "molecule";
   state.orcaVersion = orcaVersionValue;
+  state.orcaTerminatedNormally = Boolean(orcaTerminatedNormally);
   updateStatusOrcaVersion();
+  updateOrcaTerminationBox();
   state.finalConverged = finalConverged;
   state.charge = charge;
   state.multiplicity = multiplicity;
@@ -545,6 +551,7 @@ async function loadData() {
       data.frames,
       data.source,
       data.orca_version ?? null,
+      data.orca_terminated_normally ?? false,
       data.final_converged ?? null,
       data.charge ?? null,
       data.multiplicity ?? null,
@@ -558,6 +565,19 @@ async function loadData() {
   } catch (err) {
     setStatus(`Failed to load data: ${err.message}`);
   }
+}
+
+function updateOrcaTerminationBox() {
+  if (!orcaTerminationBox || !orcaTerminationText) return;
+  orcaTerminationBox.classList.remove("ok", "bad");
+  if (state.orcaTerminatedNormally) {
+    orcaTerminationBox.classList.add("ok");
+    orcaTerminationText.textContent = "ORCA terminated normally";
+    return;
+  }
+  orcaTerminationBox.classList.add("bad");
+  orcaTerminationText.textContent =
+    "ORCA did not terminate normally (marker not found)";
 }
 
 function updateFinalConvergenceBadge() {

@@ -9,6 +9,7 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
     let mut frames: Vec<Frame> = Vec::new();
     let mut pending_energy: Option<f64> = None;
     let final_converged = parse_final_convergence(content);
+    let orca_terminated_normally = parse_orca_terminated_normally(content);
     let lines: Vec<&str> = content.lines().collect();
     let orca_version = parse_orca_version(&lines);
     let coord_blocks = parse_cartesian_blocks(&lines);
@@ -75,6 +76,7 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
     ParseResult {
         source: source.to_string(),
         orca_version,
+        orca_terminated_normally,
         frames,
         final_converged,
         charge,
@@ -133,6 +135,13 @@ fn parse_final_convergence(content: &str) -> Option<bool> {
     }
 
     final_converged
+}
+
+fn parse_orca_terminated_normally(content: &str) -> bool {
+    content.lines().any(|line| {
+        line.to_ascii_uppercase()
+            .contains("ORCA TERMINATED NORMALLY")
+    })
 }
 
 fn parse_orca_version(lines: &[&str]) -> Option<String> {
@@ -208,9 +217,20 @@ FINAL SINGLE POINT ENERGY     -10.6000
         let result = parse_orca_out("test.out", content);
         assert!(result.frames.is_empty());
         assert_eq!(result.final_converged, None);
+        assert!(!result.orca_terminated_normally);
         assert_eq!(result.orca_version, None);
         assert!(!result.frequency.has_frequency);
         assert!(result.frequency.thermochemistry.is_none());
+    }
+
+    #[test]
+    fn parse_orca_terminated_normally_true() {
+        let content = r#"
+...
+****ORCA TERMINATED NORMALLY****
+"#;
+        let result = parse_orca_out("test.out", content);
+        assert!(result.orca_terminated_normally);
     }
 
     #[test]

@@ -31,6 +31,25 @@
   flex-wrap: wrap;
 }
 
+.orca-termination {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  border-width: 2px;
+}
+
+.orca-termination.ok {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.orca-termination.bad {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
 .energy-label {
   user-select: none;
 }
