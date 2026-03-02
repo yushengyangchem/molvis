@@ -11,6 +11,7 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
     let final_converged = parse_final_convergence(content);
     let orca_terminated_normally = parse_orca_terminated_normally(content);
     let lines: Vec<&str> = content.lines().collect();
+    let (calculation_type, has_freq_keyword) = parse_calculation_profile(&lines);
     let orca_version = parse_orca_version(&lines);
     let coord_blocks = parse_cartesian_blocks(&lines);
     let freq_blocks = parse_frequency_blocks(&lines);
@@ -75,6 +76,8 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
 
     ParseResult {
         source: source.to_string(),
+        calculation_type,
+        has_freq_keyword,
         orca_version,
         orca_terminated_normally,
         frames,
@@ -83,6 +86,43 @@ pub fn parse_orca_out(source: &str, content: &str) -> ParseResult {
         multiplicity,
         frequency: build_frequency_report(&lines, &coord_blocks, &freq_blocks, &normal_blocks),
     }
+}
+
+fn parse_calculation_profile(lines: &[&str]) -> (Option<String>, bool) {
+    let mut saw_opt = false;
+    let mut saw_optts = false;
+    let mut saw_sp = false;
+    let mut has_freq_keyword = false;
+
+    for line in lines {
+        for token in line
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|token| !token.is_empty())
+        {
+            if token.eq_ignore_ascii_case("optts") {
+                saw_optts = true;
+                saw_opt = true;
+            } else if token.eq_ignore_ascii_case("opt") {
+                saw_opt = true;
+            } else if token.eq_ignore_ascii_case("sp") {
+                saw_sp = true;
+            } else if token.eq_ignore_ascii_case("freq") {
+                has_freq_keyword = true;
+            }
+        }
+    }
+
+    let calculation_type = if saw_optts {
+        Some("optts".to_string())
+    } else if saw_opt {
+        Some("opt".to_string())
+    } else if saw_sp {
+        Some("sp".to_string())
+    } else {
+        None
+    };
+
+    (calculation_type, has_freq_keyword)
 }
 
 fn parse_energy_line(line: &str) -> Option<f64> {
@@ -369,5 +409,43 @@ G-E(el)                          ...      0.90619711 Eh
             thermo.thermal_correction_to_gibbs_free_energy_hartree,
             Some(0.90619711)
         );
+    }
+
+    #[test]
+    fn parse_calculation_type_optts_preferred_over_opt() {
+        let content = r#"
+! B3LYP OPTTS FREQ def2-SVP
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+H       0.0000      0.0000      0.0000
+"#;
+        let result = parse_orca_out("test.out", content);
+        assert_eq!(result.calculation_type.as_deref(), Some("optts"));
+        assert!(result.has_freq_keyword);
+    }
+
+    #[test]
+    fn parse_calculation_type_opt_detected() {
+        let content = r#"
+! B3LYP OPT def2-SVP
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+H       0.0000      0.0000      0.0000
+"#;
+        let result = parse_orca_out("test.out", content);
+        assert_eq!(result.calculation_type.as_deref(), Some("opt"));
+        assert!(!result.has_freq_keyword);
+    }
+
+    #[test]
+    fn parse_calculation_type_sp_detected() {
+        let content = r#"
+! B3LYP SP def2-SVP
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+H       0.0000      0.0000      0.0000
+"#;
+        let result = parse_orca_out("test.out", content);
+        assert_eq!(result.calculation_type.as_deref(), Some("sp"));
     }
 }

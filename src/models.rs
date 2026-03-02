@@ -18,6 +18,8 @@ pub struct Frame {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParseResult {
     pub source: String,
+    pub calculation_type: Option<String>,
+    pub has_freq_keyword: bool,
     pub orca_version: Option<String>,
     pub orca_terminated_normally: bool,
     pub frames: Vec<Frame>,

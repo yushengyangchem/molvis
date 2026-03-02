@@ -36,6 +36,8 @@ const state = {
   frames: [],
   source: "",
   orcaVersion: null,
+  calculationType: null,
+  hasFreqKeyword: false,
   orcaTerminatedNormally: false,
   finalConverged: null,
   frequency: null,
@@ -223,6 +225,8 @@ function bindEvents() {
 function loadFrames(
   frames,
   source,
+  calculationType = null,
+  hasFreqKeyword = false,
   orcaVersionValue = null,
   orcaTerminatedNormally = false,
   finalConverged = null,
@@ -237,6 +241,11 @@ function loadFrames(
 ) {
   state.frames = frames || [];
   state.source = source || "molecule";
+  state.calculationType =
+    typeof calculationType === "string"
+      ? calculationType.trim().toLowerCase()
+      : null;
+  state.hasFreqKeyword = Boolean(hasFreqKeyword);
   state.orcaVersion = orcaVersionValue;
   state.orcaTerminatedNormally = Boolean(orcaTerminatedNormally);
   updateStatusOrcaVersion();
@@ -398,18 +407,65 @@ function updateMeta() {
   drawEnergyTrend();
 }
 
-function getFrequencyStatusView(report) {
+function getFrequencyStatusView(
+  report,
+  calculationType = null,
+  hasFreqKeyword = false,
+) {
   const hasFrequency = Boolean(report?.has_frequency);
   const modeCount = Array.isArray(report?.imaginary_modes)
     ? report.imaginary_modes.length
     : 0;
+  const calcType =
+    typeof calculationType === "string"
+      ? calculationType.trim().toLowerCase()
+      : null;
 
   if (!hasFrequency) {
+    if (calcType === "sp") {
+      return {
+        text: "SP calculation: frequency/thermochemistry check skipped",
+        className: "freq-status-neutral",
+      };
+    }
+    if ((calcType === "opt" || calcType === "optts") && hasFreqKeyword) {
+      return {
+        text: "Frequency analysis expected but not found",
+        className: "freq-status-warn",
+      };
+    }
     return {
       text: "No frequency calculation (single-point energy only)",
       className: "freq-status-neutral",
     };
   }
+
+  if (calcType === "optts" && hasFreqKeyword) {
+    if (modeCount === 1) {
+      return {
+        text: "Found 1 imaginary mode (transition state)",
+        className: "freq-status-ok",
+      };
+    }
+    return {
+      text: `Found ${modeCount} imaginary mode(s) (transition state should be 1)`,
+      className: "freq-status-warn",
+    };
+  }
+
+  if (calcType === "opt" && hasFreqKeyword) {
+    if (modeCount === 0) {
+      return {
+        text: "No imaginary modes (intermediate)",
+        className: "freq-status-ok",
+      };
+    }
+    return {
+      text: `Found ${modeCount} imaginary mode(s) (intermediate should be 0)`,
+      className: "freq-status-warn",
+    };
+  }
+
   if (modeCount >= 2) {
     return {
       text: `Found ${modeCount} imaginary mode(s) (warning)`,
@@ -431,7 +487,11 @@ function getFrequencyStatusView(report) {
 function renderFrequencyPanel() {
   const report = state.frequency || {};
   if (freqStatus) {
-    const view = getFrequencyStatusView(report);
+    const view = getFrequencyStatusView(
+      report,
+      state.calculationType,
+      state.hasFreqKeyword,
+    );
     freqStatus.textContent = view.text;
     freqStatus.classList.remove(
       "freq-status-neutral",
@@ -734,6 +794,8 @@ async function loadData() {
     loadFrames(
       data.frames,
       data.source,
+      data.calculation_type ?? null,
+      data.has_freq_keyword ?? false,
       data.orca_version ?? null,
       data.orca_terminated_normally ?? false,
       data.final_converged ?? null,
