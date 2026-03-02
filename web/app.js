@@ -829,23 +829,14 @@ function updateOrcaTerminationBox() {
 function updateFinalConvergenceBadge() {
   if (!finalConvergenceBadge) return;
 
-  finalConvergenceBadge.classList.remove(
-    "converged",
-    "not-converged",
-    "unknown",
-  );
-  if (state.finalConverged === true) {
-    finalConvergenceBadge.classList.add("converged");
-    finalConvergenceBadge.textContent = "Converged";
-    return;
-  }
+  finalConvergenceBadge.classList.remove("not-converged");
   if (state.finalConverged === false) {
+    finalConvergenceBadge.style.display = "inline-flex";
     finalConvergenceBadge.classList.add("not-converged");
     finalConvergenceBadge.textContent = "Not converged";
     return;
   }
-  finalConvergenceBadge.classList.add("unknown");
-  finalConvergenceBadge.textContent = "Unknown";
+  finalConvergenceBadge.style.display = "none";
 }
 
 async function load3DMol() {

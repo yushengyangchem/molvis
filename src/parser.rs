@@ -163,18 +163,20 @@ fn extract_last_int(line: &str) -> Option<i64> {
 }
 
 fn parse_final_convergence(content: &str) -> Option<bool> {
-    let mut final_converged: Option<bool> = None;
+    let mut saw_not_converged = false;
 
     for line in content.lines() {
         let upper = line.to_ascii_uppercase();
-        if upper.contains("THE OPTIMIZATION HAS CONVERGED") {
-            final_converged = Some(true);
-        } else if upper.contains("THE OPTIMIZATION HAS NOT CONVERGED") {
-            final_converged = Some(false);
+        if upper.contains("THE OPTIMIZATION HAS NOT CONVERGED") {
+            saw_not_converged = true;
         }
     }
 
-    final_converged
+    if saw_not_converged {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 fn parse_orca_terminated_normally(content: &str) -> bool {
@@ -283,7 +285,7 @@ Program Version 6.1.1  -  RELEASE   -
     }
 
     #[test]
-    fn parse_final_convergence_true() {
+    fn parse_final_convergence_converged_marker_is_silent() {
         let content = r#"
 CARTESIAN COORDINATES (ANGSTROEM)
 ---------------------------------
@@ -293,7 +295,7 @@ H       0.0000      0.0000      1.0800
 THE OPTIMIZATION HAS CONVERGED
 "#;
         let result = parse_orca_out("test.out", content);
-        assert_eq!(result.final_converged, Some(true));
+        assert_eq!(result.final_converged, None);
         assert!(!result.frequency.has_frequency);
     }
 
@@ -313,7 +315,7 @@ THE OPTIMIZATION HAS NOT CONVERGED
     }
 
     #[test]
-    fn parse_final_convergence_uses_last_optimization_status() {
+    fn parse_final_convergence_not_converged_marker_always_flags() {
         let content = r#"
 THE OPTIMIZATION HAS CONVERGED
 THE OPTIMIZATION HAS NOT CONVERGED
