@@ -39,6 +39,7 @@ const THERMOCHEMISTRY_JS: &str = include_str!("../web/modules/thermochemistry.js
 const TREND_CHART_JS: &str = include_str!("../web/modules/trendChart.js");
 const VIBRATION_JS: &str = include_str!("../web/modules/vibration.js");
 const VIEWER_FRAME_JS: &str = include_str!("../web/modules/viewerFrame.js");
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone)]
 struct AppState {
@@ -296,7 +297,8 @@ async fn get_parsed_data(State(state): State<AppState>) -> Response {
 }
 
 async fn index_html() -> Response {
-    static_response("text/html; charset=utf-8", INDEX_HTML)
+    let body = INDEX_HTML.replace("__MOLVIS_VERSION__", APP_VERSION);
+    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], body).into_response()
 }
 
 async fn app_js() -> Response {

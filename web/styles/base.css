@@ -18,6 +18,12 @@ body {
   color: var(--ink);
 }
 
+.app-version {
+  margin: -8px 0 18px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 button {
   border: 0;
   border-radius: 8px;
