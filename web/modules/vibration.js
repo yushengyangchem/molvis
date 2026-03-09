@@ -104,9 +104,6 @@ export function openVibrationAnalysis(state, mode, deps) {
   state.vibration.parsedFrames = frames;
   state.vibration.currentFrame = 0;
   state.vibration.timer = null;
-  if (deps.clearMeasureBtn) {
-    deps.clearMeasureBtn.classList.add("hidden");
-  }
 
   if (deps.vibrationPanel) deps.vibrationPanel.classList.remove("hidden");
   if (deps.vibrationTitle) {
@@ -148,6 +145,34 @@ export function renderVibrationFrame(state, index, deps) {
       sphere: { scale: 0.3, colorscheme },
     },
   );
+  state.viewer.setClickable({}, true, (atom) => {
+    deps.onAtomPicked(atom);
+  });
+
+  if (deps.showAtomIndices?.()) {
+    frame.atoms.forEach((atom, atomIndex) => {
+      state.viewer.addLabel(String(atomIndex), {
+        position: { x: atom.x, y: atom.y, z: atom.z },
+        fontColor: "#ffffff",
+        backgroundColor: "#111827",
+        backgroundOpacity: 0.55,
+        borderThickness: 0,
+        fontSize: 12,
+        bold: true,
+        inFront: true,
+      });
+    });
+  }
+
+  const selection = deps.getMeasurementSelection?.();
+  if (
+    selection?.scope === "vibration" &&
+    selection.frame === index &&
+    selection.ids?.length
+  ) {
+    deps.addSelectionOverlay(state.viewer, frame, selection.ids);
+  }
+
   state.viewer.render();
   if (deps.vibrationFrameInfo) {
     deps.vibrationFrameInfo.textContent = `${index + 1} / ${frames.length}`;
@@ -202,9 +227,6 @@ export function closeVibrationAnalysis(state, deps, { silent = false } = {}) {
   }
   if (hadActive && state.frames.length > 0) {
     deps.renderFrame(state.currentIndex);
-  }
-  if (deps.clearMeasureBtn) {
-    deps.clearMeasureBtn.classList.remove("hidden");
   }
   if (deps.updateTextPanelLabel) {
     deps.updateTextPanelLabel();

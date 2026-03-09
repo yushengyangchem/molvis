@@ -47,6 +47,7 @@ const state = {
   pendingFrameIndex: null,
   scheduledFrameRender: false,
   labelRenderTimer: null,
+  selectedAtomScope: null,
   selectedAtomFrame: null,
   selectedAtomIndices: [],
   inferredMolCache: new Map(),
@@ -332,8 +333,17 @@ function onAtomPicked(atom) {
     return;
   }
 
-  if (state.selectedAtomFrame !== state.currentIndex) {
-    state.selectedAtomFrame = state.currentIndex;
+  const activeScope = state.vibration.activeMode ? "vibration" : "main";
+  const activeFrame = state.vibration.activeMode
+    ? state.vibration.currentFrame
+    : state.currentIndex;
+
+  if (
+    state.selectedAtomScope !== activeScope ||
+    state.selectedAtomFrame !== activeFrame
+  ) {
+    state.selectedAtomScope = activeScope;
+    state.selectedAtomFrame = activeFrame;
     state.selectedAtomIndices = [];
   }
 
@@ -350,12 +360,19 @@ function onAtomPicked(atom) {
     state.selectedAtomIndices.push(atomIndex);
   }
 
-  const frame = state.frames[state.currentIndex];
+  const frame = state.vibration.activeMode
+    ? state.vibration.parsedFrames[state.vibration.currentFrame]
+    : state.frames[state.currentIndex];
   setStatus(buildMeasurementStatus(frame, state.selectedAtomIndices));
+  if (state.vibration.activeMode) {
+    renderVibrationFrame(state.vibration.currentFrame);
+    return;
+  }
   renderFrame(state.currentIndex);
 }
 
 function clearAtomSelection() {
+  state.selectedAtomScope = null;
   state.selectedAtomFrame = null;
   state.selectedAtomIndices = [];
 }
@@ -364,6 +381,10 @@ function clearSelectionAndRefresh(statusText) {
   clearAtomSelection();
   if (statusText) {
     setStatus(statusText);
+  }
+  if (state.vibration.activeMode) {
+    renderVibrationFrame(state.vibration.currentFrame);
+    return;
   }
   if (state.frames.length > 0) {
     renderFrame(state.currentIndex);
@@ -570,7 +591,15 @@ function getVibrationDeps() {
     clearMeasureBtn,
     toMolWithInferredBondOrders,
     cpkColors,
+    onAtomPicked,
+    addSelectionOverlay,
     clearAtomSelection,
+    showAtomIndices: () => state.showAtomIndices,
+    getMeasurementSelection: () => ({
+      scope: state.selectedAtomScope,
+      frame: state.selectedAtomFrame,
+      ids: state.selectedAtomIndices,
+    }),
     renderFrame,
     renderFrequencyPanel,
     setStatus,

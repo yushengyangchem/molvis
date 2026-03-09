@@ -73,7 +73,10 @@ export function renderFrame(state, index, deps, options = {}) {
     addAtomIndexLabels(state.viewer, frame.atoms);
   }
 
-  if (state.selectedAtomFrame === state.currentIndex) {
+  if (
+    state.selectedAtomScope === "main" &&
+    state.selectedAtomFrame === state.currentIndex
+  ) {
     deps.addSelectionOverlay(state.viewer, frame, state.selectedAtomIndices);
   }
 
