@@ -108,6 +108,7 @@ struct CliArgs {
     #[arg(
         short = 'n',
         long = "name",
+        allow_hyphen_values = true,
         value_name = "NAME",
         help = "Append a suffix to the input file stem for the output XYZ name"
     )]
@@ -548,12 +549,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_cli_export_last_xyz_with_hyphenated_output_name() {
+        let args = ["molvis", "-x", "-n", "-m062x", "job.out"];
+        let cfg = CliArgs::try_parse_from(args).unwrap();
+        assert_eq!(cfg.out_path, Some("job.out".to_string()));
+        assert!(cfg.export_last_xyz);
+        assert_eq!(cfg.output_name.as_deref(), Some("-m062x"));
+    }
+
+    #[test]
     fn parse_cli_export_last_xyz_long_flag() {
         let args = ["molvis", "--xyz", "--name", "_opt", "job.out"];
         let cfg = CliArgs::try_parse_from(args).unwrap();
         assert_eq!(cfg.out_path, Some("job.out".to_string()));
         assert!(cfg.export_last_xyz);
         assert_eq!(cfg.output_name.as_deref(), Some("_opt"));
+    }
+
+    #[test]
+    fn parse_cli_export_last_xyz_long_flag_with_hyphenated_output_name() {
+        let args = ["molvis", "--xyz", "--name=-m062x", "job.out"];
+        let cfg = CliArgs::try_parse_from(args).unwrap();
+        assert_eq!(cfg.out_path, Some("job.out".to_string()));
+        assert!(cfg.export_last_xyz);
+        assert_eq!(cfg.output_name.as_deref(), Some("-m062x"));
     }
 
     #[test]
