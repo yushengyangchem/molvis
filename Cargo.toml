@@ -1,6 +1,6 @@
 [package]
 name = "molvis"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2021"
 description = "CLI web viewer for molecules with 3Dmol.js rendering"
 license = "MIT"
