@@ -27,6 +27,36 @@ cargo install --path .
 ```bash
 molvis /path/to/your.out
 molvis -H 0.0.0.0 -p 8080 /path/to/your.out
+molvis --xyz /path/to/your.out
+molvis -x /path/to/your.out
+molvis -x -n _opt /path/to/your.out
+```
+
+`-x` / `--xyz` will parse the ORCA `.out`, take the last geometry frame, and write an XYZ file.
+
+By default it uses the input filename stem:
+
+```text
+<input-stem>.xyz
+```
+
+You can append a suffix to the input file stem with `-n` / `--name`:
+
+```text
+<input-stem><name>.xyz
+```
+
+For example:
+
+```bash
+molvis -x sample.out
+# writes sample.xyz
+
+molvis --xyz sample.out
+# writes sample.xyz
+
+molvis -x -n _opt sample.out
+# writes sample_opt.xyz
 ```
 
 ## Server config (TOML)
@@ -66,6 +96,9 @@ Open `http://127.0.0.1:3000`
 
 ```bash
 cargo run -- -H 0.0.0.0 -p 8080 /path/to/your.out
+cargo run -- --xyz /path/to/your.out
+cargo run -- -x /path/to/your.out
+cargo run -- -x -n _opt /path/to/your.out
 ```
 
 ## Frontend JS loading

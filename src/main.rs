@@ -56,6 +56,10 @@ struct CliConfig {
 #[derive(Debug)]
 enum CliAction {
     Run(CliConfig),
+    ExportLastXyz {
+        out_path: String,
+        output_name: Option<String>,
+    },
     InitConfig,
 }
 
@@ -86,7 +90,7 @@ enum CliThemeArg {
 {usage-heading} {usage}
 
 {all-args}{after-help}",
-    after_help = "Examples:\n  molvis path/to/file.out\n  molvis -H 0.0.0.0 -p 8080 path/to/file.out"
+    after_help = "Examples:\n  molvis path/to/file.out\n  molvis -H 0.0.0.0 -p 8080 path/to/file.out\n  molvis --xyz path/to/file.out\n  molvis -x -n job_opt path/to/file.out"
 )]
 struct CliArgs {
     #[arg(
@@ -95,6 +99,19 @@ struct CliArgs {
         help = "Path to molecular output file (currently ORCA .out)"
     )]
     out_path: Option<String>,
+    #[arg(
+        short = 'x',
+        long = "xyz",
+        help = "Write the last parsed geometry to an XYZ file and exit"
+    )]
+    export_last_xyz: bool,
+    #[arg(
+        short = 'n',
+        long = "name",
+        value_name = "NAME",
+        help = "Append a suffix to the input file stem for the output XYZ name"
+    )]
+    output_name: Option<String>,
     #[arg(
         short = 'H',
         long = "host",
@@ -215,17 +232,26 @@ fn parse_theme_arg_from_raw_args() -> CliThemeArg {
 #[tokio::main]
 async fn main() {
     let action = parse_cli_args();
-    if let CliAction::InitConfig = action {
-        if let Err(err) = init_user_config() {
-            eprintln!("Failed to initialize config: {err}");
-            process::exit(1);
+    match action {
+        CliAction::InitConfig => {
+            if let Err(err) = init_user_config() {
+                eprintln!("Failed to initialize config: {err}");
+                process::exit(1);
+            }
+            return;
         }
-        return;
+        CliAction::ExportLastXyz {
+            out_path,
+            output_name,
+        } => {
+            export_last_xyz(&out_path, output_name.as_deref()).await;
+            return;
+        }
+        CliAction::Run(cli) => run_server(cli).await,
     }
-    let CliAction::Run(cli) = action else {
-        process::exit(1);
-    };
+}
 
+async fn run_server(cli: CliConfig) {
     let content = match fs::read_to_string(&cli.out_path).await {
         Ok(content) => content,
         Err(err) => {
@@ -286,6 +312,79 @@ async fn main() {
         eprintln!("Server error: {err}");
         process::exit(1);
     }
+}
+
+async fn export_last_xyz(out_path: &str, output_name: Option<&str>) {
+    let content = match fs::read_to_string(out_path).await {
+        Ok(content) => content,
+        Err(err) => {
+            eprintln!("Failed to read input file '{}': {err}", out_path);
+            process::exit(1);
+        }
+    };
+
+    let parsed = parser::parse_orca_out(out_path, &content);
+    let Some(last_frame) = parsed.frames.last() else {
+        eprintln!(
+            "Failed to export XYZ: no coordinate frames were parsed from '{}'",
+            out_path
+        );
+        process::exit(1);
+    };
+
+    let output_path = build_xyz_output_path(out_path, output_name);
+    let xyz = format_frame_as_xyz(last_frame);
+
+    if let Err(err) = fs::write(&output_path, xyz).await {
+        eprintln!(
+            "Failed to write XYZ file '{}': {err}",
+            output_path.display()
+        );
+        process::exit(1);
+    }
+
+    println!(
+        "Exported last frame ({} atoms) to {}",
+        last_frame.atoms.len(),
+        output_path.display()
+    );
+}
+
+fn build_xyz_output_path(out_path: &str, output_name: Option<&str>) -> PathBuf {
+    let input_path = PathBuf::from(out_path);
+    let parent = input_path.parent().map(PathBuf::from).unwrap_or_default();
+    let stem = input_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("output");
+    let suffix = output_name
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.trim())
+        .unwrap_or("");
+
+    parent.join(format!("{stem}{suffix}.xyz"))
+}
+
+fn format_frame_as_xyz(frame: &models::Frame) -> String {
+    let mut text = String::new();
+    text.push_str(&format!("{}\n", frame.atoms.len()));
+    match frame.energy_hartree {
+        Some(energy) => text.push_str(&format!(
+            "step={} energy_hartree={energy:.10}\n",
+            frame.step
+        )),
+        None => text.push_str(&format!("step={}\n", frame.step)),
+    }
+
+    for atom in &frame.atoms {
+        text.push_str(&format!(
+            "{:<2} {:>14.8} {:>14.8} {:>14.8}\n",
+            atom.element, atom.x, atom.y, atom.z
+        ));
+    }
+
+    text
 }
 
 async fn get_parsed_data(State(state): State<AppState>) -> Response {
@@ -391,9 +490,11 @@ async fn local_file_response(path: &str, content_type: &'static str) -> Response
 
 #[cfg(test)]
 mod tests {
-    use super::CliArgs;
+    use super::{build_xyz_output_path, format_frame_as_xyz, CliArgs};
+    use crate::models::{Atom, Frame};
     use clap::Parser;
     use std::net::IpAddr;
+    use std::path::PathBuf;
 
     #[test]
     fn parse_cli_defaults() {
@@ -423,9 +524,75 @@ mod tests {
 
     #[test]
     fn parse_cli_unknown_short_option() {
-        let args = ["molvis", "-x", "job.out"];
+        let args = ["molvis", "-z", "job.out"];
         let err = CliArgs::try_parse_from(args).unwrap_err();
         assert!(err.to_string().contains("unexpected argument"));
+    }
+
+    #[test]
+    fn parse_cli_export_last_xyz_short_flag() {
+        let args = ["molvis", "-x", "job.out"];
+        let cfg = CliArgs::try_parse_from(args).unwrap();
+        assert_eq!(cfg.out_path, Some("job.out".to_string()));
+        assert!(cfg.export_last_xyz);
+        assert_eq!(cfg.output_name, None);
+    }
+
+    #[test]
+    fn parse_cli_export_last_xyz_with_output_name() {
+        let args = ["molvis", "-x", "-n", "job_opt", "job.out"];
+        let cfg = CliArgs::try_parse_from(args).unwrap();
+        assert_eq!(cfg.out_path, Some("job.out".to_string()));
+        assert!(cfg.export_last_xyz);
+        assert_eq!(cfg.output_name.as_deref(), Some("job_opt"));
+    }
+
+    #[test]
+    fn parse_cli_export_last_xyz_long_flag() {
+        let args = ["molvis", "--xyz", "--name", "_opt", "job.out"];
+        let cfg = CliArgs::try_parse_from(args).unwrap();
+        assert_eq!(cfg.out_path, Some("job.out".to_string()));
+        assert!(cfg.export_last_xyz);
+        assert_eq!(cfg.output_name.as_deref(), Some("_opt"));
+    }
+
+    #[test]
+    fn build_xyz_output_path_defaults_to_input_stem() {
+        let path = build_xyz_output_path("/tmp/demo/job.out", None);
+        assert_eq!(path, PathBuf::from("/tmp/demo/job.xyz"));
+    }
+
+    #[test]
+    fn build_xyz_output_path_appends_suffix_to_input_stem() {
+        let path = build_xyz_output_path("/tmp/demo/job.out", Some("_opt"));
+        assert_eq!(path, PathBuf::from("/tmp/demo/job_opt.xyz"));
+    }
+
+    #[test]
+    fn format_frame_as_xyz_writes_standard_xyz_text() {
+        let frame = Frame {
+            step: 3,
+            energy_hartree: Some(-123.456789),
+            atoms: vec![
+                Atom {
+                    element: "C".to_string(),
+                    x: 0.0,
+                    y: 1.0,
+                    z: 2.0,
+                },
+                Atom {
+                    element: "H".to_string(),
+                    x: -0.5,
+                    y: 1.5,
+                    z: 2.5,
+                },
+            ],
+        };
+
+        let xyz = format_frame_as_xyz(&frame);
+        assert!(xyz.starts_with("2\nstep=3 energy_hartree=-123.4567890000\n"));
+        assert!(xyz.contains("C      0.00000000"));
+        assert!(xyz.contains("H     -0.50000000"));
     }
 }
 
@@ -451,11 +618,19 @@ fn parse_cli_args() -> CliAction {
     } else {
         file_cfg.port.unwrap_or(args.port)
     };
+    let out_path = args
+        .out_path
+        .unwrap_or_else(|| unreachable!("path is required when not using --init-config"));
+
+    if args.export_last_xyz {
+        return CliAction::ExportLastXyz {
+            out_path,
+            output_name: args.output_name,
+        };
+    }
 
     CliAction::Run(CliConfig {
-        out_path: args
-            .out_path
-            .unwrap_or_else(|| unreachable!("path is required when not using --init-config")),
+        out_path,
         host,
         port,
     })
